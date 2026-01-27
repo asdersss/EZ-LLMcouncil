@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KaTeX 测试</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .test-section {
+            margin: 30px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background: #f9f9f9;
+        }
+        h2 {
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .formula {
+            margin: 15px 0;
+            padding: 10px;
+            background: white;
+            border-left: 4px solid #007bff;
+        }
+    </style>
+</head>
+<body>
+    <h1>KaTeX 数学公式渲染测试</h1>
+    
+    <div class="test-section">
+        <h2>行内公式测试</h2>
+        <div class="formula">
+            <p>这是一个行内公式：$E = mc^2$</p>
+            <p>另一个例子：$\sum_{i=1}^{n} i = \frac{n(n+1)}{2}$</p>
+        </div>
+    </div>
+    
+    <div class="test-section">
+        <h2>块级公式测试</h2>
+        <div class="formula">
+            <p>二次方程求根公式：</p>
+            $$x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}$$
+        </div>
+        
+        <div class="formula">
+            <p>积分公式：</p>
+            $$\int_{a}^{b} f(x) dx = F(b) - F(a)$$
+        </div>
+        
+        <div class="formula">
+            <p>矩阵：</p>
+            $$\begin{bmatrix}
+            a & b \\
+            c & d
+            \end{bmatrix}$$
+        </div>
+    </div>
+    
+    <div class="test-section">
+        <h2>复杂公式测试</h2>
+        <div class="formula">
+            <p>傅里叶变换：</p>
+            $$\mathcal{F}(f)(\\omega) = \int_{-\infty}^{\infty} f(t) e^{-i\omega t} dt$$
+        </div>
+        
+        <div class="formula">
+            <p>麦克斯韦方程组：</p>
+            $$\begin{aligned}
+            \nabla \cdot \mathbf{E} &= \frac{\rho}{\epsilon_0} \\
+            \nabla \cdot \mathbf{B} &= 0 \\
+            \nabla \times \mathbf{E} &= -\frac{\partial \mathbf{B}}{\partial t} \\
+            \nabla \times \mathbf{B} &= \mu_0\mathbf{J} + \mu_0\epsilon_0\frac{\partial \mathbf{E}}{\partial t}
+            \end{aligned}$$
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            renderMathInElement(document.body, {
+                delimiters: [
+                    {left: "$$", right: "$$", display: true},
+                    {left: "$", right: "$", display: false}
+                ],
+                throwOnError: false,
+                strict: false,
+                trust: true
+            });
+        });
+    </script>
+</body>
+</html>

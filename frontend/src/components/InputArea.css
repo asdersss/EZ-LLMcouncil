@@ -1,0 +1,206 @@
+.input-area {
+  border-top: 1px solid var(--border-color);
+  background-color: var(--surface-color);
+  padding: var(--spacing-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.input-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background-color: var(--error-color);
+  color: white;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.error-close {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  width: 20px;
+  height: 20px;
+}
+
+.error-close:hover {
+  opacity: 0.8;
+}
+
+.attachments-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm);
+  background-color: var(--background-color);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+}
+
+.attachment-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background-color: var(--surface-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+  transition: all 0.2s ease;
+}
+
+.attachment-item:hover {
+  box-shadow: var(--shadow-sm);
+}
+
+.attachment-name {
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.attachment-remove {
+  background: none;
+  border: none;
+  color: var(--secondary-color);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  width: 16px;
+  height: 16px;
+  transition: color 0.2s ease;
+}
+
+.attachment-remove:hover {
+  color: var(--error-color);
+}
+
+.input-container {
+  display: flex;
+  gap: var(--spacing-sm);
+  align-items: flex-end;
+}
+
+.message-input {
+  flex: 1;
+  min-height: 44px;
+  max-height: 200px;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background-color: var(--background-color);
+  color: var(--text-color);
+  font-family: var(--font-family);
+  font-size: var(--font-size-md);
+  resize: none;
+  overflow-y: auto;
+  transition: border-color 0.2s ease;
+}
+
+.message-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+}
+
+.message-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.message-input::placeholder {
+  color: var(--secondary-color);
+}
+
+.input-actions {
+  display: flex;
+  gap: var(--spacing-sm);
+  align-items: center;
+}
+
+/* 输入区域的文件管理按钮和上传附件按钮 - 统一样式 */
+.input-area .input-actions .file-manager-btn,
+.input-area .input-actions .attach-btn {
+  width: 44px !important;
+  height: 44px !important;
+  min-width: 44px !important;
+  min-height: 44px !important;
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: var(--radius-md) !important;
+  background-color: var(--surface-color) !important;
+  color: var(--text-color) !important;
+  font-size: 20px !important;
+  line-height: 1 !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+  flex-shrink: 0 !important;
+}
+
+.input-area .input-actions .file-manager-btn:hover:not(:disabled),
+.input-area .input-actions .attach-btn:hover:not(:disabled) {
+  background-color: var(--primary-color) !important;
+  border-color: var(--primary-color) !important;
+  transform: scale(1.05) !important;
+}
+
+.input-area .input-actions .file-manager-btn:active:not(:disabled),
+.input-area .input-actions .attach-btn:active:not(:disabled) {
+  transform: scale(0.95) !important;
+}
+
+.input-area .input-actions .file-manager-btn:disabled,
+.input-area .input-actions .attach-btn:disabled {
+  opacity: 0.5 !important;
+  cursor: not-allowed !important;
+}
+
+.send-btn {
+  height: 44px;
+  padding: 0 var(--spacing-lg);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.send-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .input-area {
+    padding: var(--spacing-sm);
+  }
+
+  .attachment-name {
+    max-width: 150px;
+  }
+
+  .send-btn {
+    padding: 0 var(--spacing-md);
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "models": [
+    {
+      "name": "deepseek-chat",
+      "display_name": "DeepSeek Chat",
+      "url": "https://api.deepseek.com/v1/chat/completions",
+      "api_key": "your-deepseek-api-key-here"
+    },
+    {
+      "name": "deepseek-reasoner",
+      "display_name": "DeepSeek Reasoner",
+      "url": "https://api.deepseek.com/v1/chat/completions",
+      "api_key": "your-deepseek-api-key-here"
+    }
+  ],
+  "chairman": "claude-sonnet-4-5-20250929",
+  "settings": {
+    "temperature": 0.5,
+    "max_concurrent": 100,
+    "timeout": 200,
+    "max_retries": 2,
+    "context_turns": 3,
+    "use_mineru": true,
+    "mineru_api_url": "https://mineru.net/api/v4",
+    "mineru_api_key": "your-mineru-api-key-here"
+  }
+}

@@ -1,0 +1,204 @@
+.sidebar {
+  width: 280px;
+  height: 100vh;
+  background-color: var(--surface-color);
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-header {
+  padding: var(--spacing-lg);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.sidebar-header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.sidebar-header h2 {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  color: var(--text-color);
+}
+
+.header-buttons {
+  display: flex;
+  gap: var(--spacing-sm);
+  align-items: center;
+}
+
+.sidebar .header-buttons .file-manager-btn,
+.sidebar .header-buttons .settings-btn {
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 50% !important;
+  background-color: transparent !important;
+  background: transparent !important;
+  border: none !important;
+  font-size: 20px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+.sidebar .header-buttons .file-manager-btn:hover,
+.sidebar .header-buttons .settings-btn:hover {
+  background-color: var(--primary-color) !important;
+  background: var(--primary-color) !important;
+  box-shadow: var(--shadow-md) !important;
+}
+
+.sidebar .header-buttons .file-manager-btn:hover {
+  transform: scale(1.05);
+}
+
+.sidebar .header-buttons .file-manager-btn:active {
+  transform: scale(0.95);
+}
+
+.sidebar .header-buttons .settings-btn:hover {
+  transform: rotate(90deg) scale(1.05);
+}
+
+.sidebar .header-buttons .settings-btn:active {
+  transform: rotate(90deg) scale(0.95);
+}
+
+.new-conversation-btn {
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-size: var(--font-size-md);
+  font-weight: 500;
+}
+
+.sidebar-error {
+  padding: var(--spacing-md);
+  margin: var(--spacing-md);
+  background-color: var(--error-color);
+  color: white;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+}
+
+.sidebar-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-xl);
+  gap: var(--spacing-md);
+  color: var(--secondary-color);
+}
+
+.conversation-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--spacing-sm);
+}
+
+.empty-state {
+  padding: var(--spacing-xl);
+  text-align: center;
+  color: var(--secondary-color);
+}
+
+.empty-state p {
+  margin: var(--spacing-sm) 0;
+  font-size: var(--font-size-sm);
+}
+
+.conversation-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-md);
+  margin-bottom: var(--spacing-sm);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background-color: var(--background-color);
+  border: 1px solid var(--border-color);
+}
+
+.conversation-item:hover {
+  background-color: var(--surface-color);
+  box-shadow: var(--shadow-sm);
+}
+
+.conversation-item.active {
+  background-color: var(--primary-color);
+  color: white;
+  border-color: var(--primary-color);
+}
+
+.conversation-item.active .conversation-meta {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.conversation-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.conversation-title {
+  font-weight: 500;
+  font-size: var(--font-size-md);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: var(--spacing-xs);
+}
+
+.conversation-meta {
+  font-size: var(--font-size-sm);
+  color: var(--secondary-color);
+}
+
+.delete-btn {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  background-color: transparent;
+  color: var(--secondary-color);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  margin-left: var(--spacing-sm);
+}
+
+.delete-btn:hover {
+  background-color: #ff0000 !important;
+  color: white !important;
+  border: none !important;
+}
+
+.conversation-item.active .delete-btn {
+  color: white;
+}
+
+.conversation-item.active .delete-btn:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .sidebar {
+    width: 100%;
+    max-width: 280px;
+  }
+}
