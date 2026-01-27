@@ -1,0 +1,150 @@
+/* 代码块容器 */
+.code-block-wrapper {
+  margin: 16px 0;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  background: #1e1e1e;
+}
+
+/* 代码块头部 */
+.code-block-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+  background: #2d2d2d;
+  border-bottom: 1px solid #3e3e3e;
+}
+
+/* 语言标签 */
+.code-language {
+  font-size: 12px;
+  font-weight: 600;
+  color: #9cdcfe;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* 复制按钮 */
+.code-copy-btn {
+  padding: 4px 12px;
+  font-size: 12px;
+  color: #cccccc;
+  background: transparent;
+  border: 1px solid #555;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.code-copy-btn:hover {
+  background: #3e3e3e;
+  border-color: #777;
+  color: #ffffff;
+}
+
+.code-copy-btn:active {
+  transform: scale(0.95);
+}
+
+/* 行内代码 */
+.inline-code {
+  padding: 2px 6px;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 0.9em;
+  background: rgba(135, 131, 120, 0.15);
+  color: #eb5757;
+  border-radius: 3px;
+  border: 1px solid rgba(135, 131, 120, 0.2);
+}
+
+/* 用户消息中的行内代码 */
+.user-message .inline-code {
+  background: rgba(0, 0, 0, 0.05);
+  color: #d73a49;
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+/* 普通代码块包裹器（无语言标识） */
+.code-block-plain-wrapper {
+  margin: 16px 0;
+}
+
+/* 普通代码块（无语言标识） */
+.code-block-plain {
+  margin: 0;
+  padding: 16px;
+  background: #f6f8fa;
+  border: 1px solid #e1e4e8;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.code-block-plain code {
+  background: transparent;
+  padding: 0;
+  border: none;
+  color: #24292e;
+}
+
+/* 用户消息中的普通代码块 */
+.user-message .code-block-plain {
+  background: #ffffff;
+  border-color: #d1d5db;
+}
+
+/* 语法高亮器样式覆盖 */
+.code-block-wrapper pre {
+  margin: 0 !important;
+}
+
+/* 行号样式 */
+.code-block-wrapper .linenumber {
+  min-width: 2.5em;
+  padding-right: 1em;
+  text-align: right;
+  user-select: none;
+  opacity: 0.5;
+}
+
+/* 滚动条样式 */
+.code-block-wrapper pre::-webkit-scrollbar {
+  height: 8px;
+}
+
+.code-block-wrapper pre::-webkit-scrollbar-track {
+  background: #1e1e1e;
+}
+
+.code-block-wrapper pre::-webkit-scrollbar-thumb {
+  background: #555;
+  border-radius: 4px;
+}
+
+.code-block-wrapper pre::-webkit-scrollbar-thumb:hover {
+  background: #666;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .code-block-wrapper {
+    margin: 12px 0;
+  }
+  
+  .code-block-header {
+    padding: 6px 12px;
+  }
+  
+  .code-language {
+    font-size: 11px;
+  }
+  
+  .code-copy-btn {
+    padding: 3px 8px;
+    font-size: 11px;
+  }
+}

@@ -1,0 +1,74 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Node
+node_modules/
+dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Project specific
+backend/config.json
+backend/data/conversations/*.json
+!backend/data/conversations/.gitkeep
+backend/backend/uploads/*
+!backend/backend/uploads/.gitkeep
+docs/GITHUB_SETUP.md
+*.log
+logs/
+
+# OS
+Thumbs.db
+.DS_Store
+*.bak
+*.tmp
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Test coverage
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+
+# Build outputs
+*.pyc
+*.pyo
+*.pyd
+.Python
