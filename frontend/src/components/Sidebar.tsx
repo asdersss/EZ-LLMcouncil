@@ -13,6 +13,7 @@ interface SidebarProps {
   onDeleteConversation: (convId: string) => void;
   onOpenSettings: () => void;
   onOpenFileManager: () => void;
+  onOpenProviderManager: () => void;
 }
 
 /**
@@ -26,7 +27,8 @@ function Sidebar({
   onNewConversation,
   onDeleteConversation,
   onOpenSettings,
-  onOpenFileManager
+  onOpenFileManager,
+  onOpenProviderManager
 }: SidebarProps) {
 
   // 删除对话
@@ -51,6 +53,13 @@ function Sidebar({
         <div className="sidebar-header-top">
           <h2>对话列表</h2>
           <div className="header-buttons">
+            <button
+              className="provider-manager-btn"
+              onClick={onOpenProviderManager}
+              title="供应商管理"
+            >
+              🏢
+            </button>
             <button
               className="file-manager-btn"
               onClick={onOpenFileManager}

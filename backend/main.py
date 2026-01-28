@@ -1515,6 +1515,305 @@ async def delete_file_endpoint(md5: str):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+# ==================== 供应商管理 API ====================
+
+from provider_manager import (
+    load_providers,
+    add_provider,
+    update_provider,
+    delete_provider,
+    fetch_provider_models,
+    test_model
+)
+
+
+class ProviderCreate(BaseModel):
+    """创建供应商请求模型"""
+    name: str = Field(..., description="供应商名称")
+    url: str = Field(..., description="API URL")
+    api_key: str = Field(..., description="API密钥")
+    api_type: str = Field(..., description="API类型 (openai/anthropic)")
+
+
+class ProviderUpdate(BaseModel):
+    """更新供应商请求模型"""
+    url: Optional[str] = Field(None, description="API URL")
+    api_key: Optional[str] = Field(None, description="API密钥")
+    api_type: Optional[str] = Field(None, description="API类型 (openai/anthropic)")
+
+
+class ModelAddRequest(BaseModel):
+    """添加模型到本地配置请求模型"""
+    provider_name: str = Field(..., description="供应商名称")
+    model_id: str = Field(..., description="模型ID")
+    display_name: str = Field(..., description="显示名称")
+    description: Optional[str] = Field("", description="模型描述")
+
+
+@app.get("/api/providers")
+async def get_providers():
+    """
+    获取所有供应商列表
+    
+    Returns:
+        供应商列表
+    """
+    try:
+        providers = load_providers()
+        # 隐藏API密钥
+        for provider in providers:
+            if "api_key" in provider:
+                provider["api_key_masked"] = "*" * 20
+                del provider["api_key"]
+        
+        return {
+            "providers": providers,
+            "total": len(providers)
+        }
+    except Exception as e:
+        logger.error(f"获取供应商列表错误: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.post("/api/providers")
+async def create_provider(provider: ProviderCreate):
+    """
+    添加新供应商
+    
+    Args:
+        provider: 供应商信息
+    
+    Returns:
+        创建结果
+    """
+    try:
+        success, error = add_provider(
+            name=provider.name,
+            url=provider.url,
+            api_key=provider.api_key,
+            api_type=provider.api_type
+        )
+        
+        if not success:
+            raise HTTPException(status_code=400, detail=error)
+        
+        logger.info(f"供应商已添加: {provider.name}")
+        
+        return {
+            "message": "供应商添加成功",
+            "name": provider.name
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"添加供应商错误: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.put("/api/providers/{provider_name}")
+async def update_provider_endpoint(provider_name: str, provider: ProviderUpdate):
+    """
+    更新供应商配置
+    
+    Args:
+        provider_name: 供应商名称
+        provider: 更新的供应商信息
+    
+    Returns:
+        更新结果
+    """
+    try:
+        success, error = update_provider(
+            name=provider_name,
+            url=provider.url,
+            api_key=provider.api_key,
+            api_type=provider.api_type
+        )
+        
+        if not success:
+            raise HTTPException(status_code=400, detail=error)
+        
+        logger.info(f"供应商已更新: {provider_name}")
+        
+        return {
+            "message": "供应商更新成功",
+            "name": provider_name
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"更新供应商错误: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.delete("/api/providers/{provider_name}")
+async def delete_provider_endpoint(provider_name: str):
+    """
+    删除供应商
+    
+    Args:
+        provider_name: 供应商名称
+    
+    Returns:
+        删除结果
+    """
+    try:
+        success, error = delete_provider(provider_name)
+        
+        if not success:
+            raise HTTPException(status_code=400, detail=error)
+        
+        logger.info(f"供应商已删除: {provider_name}")
+        
+        return {
+            "message": "供应商删除成功",
+            "name": provider_name
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"删除供应商错误: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.get("/api/providers/{provider_name}/models")
+async def get_provider_models(provider_name: str):
+    """
+    获取供应商的模型列表
+    
+    Args:
+        provider_name: 供应商名称
+    
+    Returns:
+        模型列表
+    """
+    try:
+        models, error = await fetch_provider_models(provider_name)
+        
+        if error:
+            raise HTTPException(status_code=400, detail=error)
+        
+        return {
+            "provider": provider_name,
+            "models": models,
+            "total": len(models) if models else 0
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取供应商模型列表错误: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.post("/api/providers/models/test")
+async def test_provider_model(provider_name: str = Query(...), model_name: str = Query(...)):
+    """
+    测试模型是否可用
+    
+    Args:
+        provider_name: 供应商名称
+        model_name: 模型名称
+    
+    Returns:
+        测试结果
+    """
+    try:
+        success, response, error = await test_model(provider_name, model_name)
+        
+        return {
+            "provider": provider_name,
+            "model": model_name,
+            "success": success,
+            "response": response,
+            "error": error
+        }
+    except Exception as e:
+        logger.error(f"测试模型错误: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.post("/api/providers/models/add")
+async def add_model_from_provider(request: ModelAddRequest):
+    """
+    从供应商添加模型到本地配置
+    
+    Args:
+        request: 添加模型请求
+    
+    Returns:
+        添加结果
+    """
+    try:
+        # 获取供应商信息
+        providers = load_providers()
+        provider = None
+        for p in providers:
+            if p["name"] == request.provider_name:
+                provider = p
+                break
+        
+        if not provider:
+            raise HTTPException(status_code=404, detail="供应商不存在")
+        
+        # 加载当前配置
+        config = load_config()
+        models = config.get("models", [])
+        
+        # 检查模型是否已存在
+        if any(m["name"] == request.model_id for m in models):
+            raise HTTPException(status_code=400, detail="模型已存在于本地配置")
+        
+        # 构建新模型配置
+        new_model = {
+            "name": request.model_id,
+            "display_name": request.display_name,
+            "description": request.description,
+            "url": provider["url"],
+            "api_key": provider["api_key"],
+            "provider": request.provider_name,
+            "api_type": provider["api_type"]
+        }
+        
+        # 添加到模型列表
+        models.append(new_model)
+        config["models"] = models
+        
+        # 保存配置
+        config_paths = [
+            "config.json",
+            "backend/config.json",
+            "../backend/config.json"
+        ]
+        
+        config_path = None
+        for path in config_paths:
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    json.load(f)
+                    config_path = path
+                    break
+            except FileNotFoundError:
+                continue
+        
+        if not config_path:
+            raise HTTPException(status_code=500, detail="配置文件未找到")
+        
+        with open(config_path, "w", encoding="utf-8") as f:
+            json.dump(config, f, ensure_ascii=False, indent=2)
+        
+        logger.info(f"模型已添加: {request.model_id} (来自供应商: {request.provider_name})")
+        
+        return {
+            "message": "模型添加成功",
+            "model": new_model
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"添加模型错误: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
     """全局异常处理器"""

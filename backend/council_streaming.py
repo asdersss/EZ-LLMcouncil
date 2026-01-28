@@ -275,6 +275,7 @@ async def collect_responses_with_progress(
                 model_name = config.get("name", "unknown")
                 url = config.get("url")
                 api_key = config.get("api_key")
+                api_type = config.get("api_type", "openai")  # 默认为 openai
                 
                 if not url or not api_key:
                     error_msg = f"模型 {model_name} 配置不完整"
@@ -294,10 +295,21 @@ async def collect_responses_with_progress(
                     "temperature": temperature
                 }
                 
-                headers = {
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {api_key}"
-                }
+                # 根据 API 类型设置请求头
+                if api_type == "anthropic":
+                    headers = {
+                        "Content-Type": "application/json",
+                        "x-api-key": api_key,
+                        "anthropic-version": "2023-06-01"
+                    }
+                    # Anthropic API 需要 max_tokens 参数
+                    if "max_tokens" not in request_body:
+                        request_body["max_tokens"] = 4096
+                else:  # openai 或其他兼容 OpenAI 的 API
+                    headers = {
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {api_key}"
+                    }
                 
                 # 重试逻辑
                 last_error = None
@@ -324,14 +336,20 @@ async def collect_responses_with_progress(
                         response.raise_for_status()
                         data = response.json()
                         
-                        # 提取响应内容
+                        # 根据 API 类型提取响应内容
                         content = ""
-                        if "choices" in data and len(data["choices"]) > 0:
-                            choice = data["choices"][0]
-                            if "message" in choice:
-                                content = choice["message"].get("content", "")
-                            elif "text" in choice:
-                                content = choice.get("text", "")
+                        if api_type == "anthropic":
+                            # Anthropic API 响应格式
+                            if "content" in data and len(data["content"]) > 0:
+                                content = data["content"][0].get("text", "")
+                        else:
+                            # OpenAI API 响应格式
+                            if "choices" in data and len(data["choices"]) > 0:
+                                choice = data["choices"][0]
+                                if "message" in choice:
+                                    content = choice["message"].get("content", "")
+                                elif "text" in choice:
+                                    content = choice.get("text", "")
                         
                         logger.info(f"模型 {model_name} 响应成功")
                         # 转换 LaTeX 公式格式

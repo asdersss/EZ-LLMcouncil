@@ -41,6 +41,7 @@ yarn-error.log*
 
 # Project specific
 backend/config.json
+backend/providers.json
 测试文件
 backend/backend/file_metadata.json
 backend/data/conversations/*.json
@@ -74,3 +75,4 @@ coverage.xml
 *.pyo
 *.pyd
 .Python
+backend/backend/providers.json

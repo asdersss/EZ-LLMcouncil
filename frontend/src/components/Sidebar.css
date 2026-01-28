@@ -34,6 +34,7 @@
   align-items: center;
 }
 
+.sidebar .header-buttons .provider-manager-btn,
 .sidebar .header-buttons .file-manager-btn,
 .sidebar .header-buttons .settings-btn {
   width: 36px !important;
@@ -52,11 +53,20 @@
   margin: 0 !important;
 }
 
+.sidebar .header-buttons .provider-manager-btn:hover,
 .sidebar .header-buttons .file-manager-btn:hover,
 .sidebar .header-buttons .settings-btn:hover {
   background-color: var(--primary-color) !important;
   background: var(--primary-color) !important;
   box-shadow: var(--shadow-md) !important;
+}
+
+.sidebar .header-buttons .provider-manager-btn:hover {
+  transform: scale(1.05);
+}
+
+.sidebar .header-buttons .provider-manager-btn:active {
+  transform: scale(0.95);
 }
 
 .sidebar .header-buttons .file-manager-btn:hover {

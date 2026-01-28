@@ -4,6 +4,7 @@ import Sidebar from './components/Sidebar';
 import ChatInterface from './components/ChatInterface';
 import Settings from './components/Settings';
 import FileManager from './components/FileManager';
+import ProviderManager from './components/ProviderManager';
 import './App.css';
 
 /**
@@ -18,6 +19,7 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showFileManager, setShowFileManager] = useState(false);
+  const [showProviderManager, setShowProviderManager] = useState(false);
 
   // 初始化：加载对话列表和模型列表
   useEffect(() => {
@@ -138,6 +140,7 @@ function App() {
         onDeleteConversation={handleDeleteConversation}
         onOpenSettings={() => setShowSettings(true)}
         onOpenFileManager={() => setShowFileManager(true)}
+        onOpenProviderManager={() => setShowProviderManager(true)}
       />
       
       <ChatInterface
@@ -155,6 +158,14 @@ function App() {
       {/* 全局文件管理器 */}
       {showFileManager && (
         <FileManager onClose={() => setShowFileManager(false)} />
+      )}
+      
+      {/* 供应商管理器 */}
+      {showProviderManager && (
+        <ProviderManager
+          onClose={() => setShowProviderManager(false)}
+          onRefresh={handleRefreshModels}
+        />
       )}
     </div>
   );
