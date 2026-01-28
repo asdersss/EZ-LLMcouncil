@@ -23,6 +23,21 @@ if not exist "backend\config.json" (
     echo [跳过] 配置文件已存在
 )
 
+echo [1.5/7] 检查文件元数据...
+if not exist "backend\backend\file_metadata.json" (
+    if exist "backend\backend\file_metadata.example.json" (
+        echo [配置] 未找到 file_metadata.json，从模板复制...
+        copy "backend\backend\file_metadata.example.json" "backend\backend\file_metadata.json" >nul
+        echo [完成] 已创建 backend\backend\file_metadata.json
+    ) else (
+        echo [错误] 未找到文件元数据模板 backend\backend\file_metadata.example.json
+        pause
+        exit /b 1
+    )
+) else (
+    echo [跳过] 文件元数据已存在
+)
+
 echo [2/7] 检查环境...
 python --version >nul 2>&1
 if errorlevel 1 (
