@@ -152,7 +152,27 @@ async def chat_stream_generator(request: ChatRequest, config: Dict[str, Any]):
             logger.info(f"添加新的用户消息")
         
         # 3. 准备模型配置和设置
-        model_configs = {m["name"]: m for m in config.get("models", [])}
+        # 从providers中构建model_configs字典
+        model_configs = {}
+        providers = config.get("providers", [])
+        for provider in providers:
+            provider_name = provider.get("name", "")
+            provider_models = provider.get("models", [])
+            
+            for model in provider_models:
+                model_name = model.get("name", "")
+                full_model_name = f"{model_name}/{provider_name}"
+                
+                model_configs[full_model_name] = {
+                    "name": full_model_name,
+                    "display_name": model.get("display_name", model_name),
+                    "description": model.get("description", ""),
+                    "url": provider.get("url", ""),
+                    "api_key": provider.get("api_key", ""),
+                    "api_type": provider.get("api_type", "openai"),
+                    "provider": provider_name
+                }
+        
         chairman = config.get("chairman", "")
         settings = config.get("settings", {})
         temperature = settings.get("temperature", 0.7)
@@ -438,8 +458,18 @@ async def chat(request: ChatRequest):
         # 加载配置
         config = load_config()
         
+        # 从providers中构建可用模型列表
+        available_models = set()
+        providers = config.get("providers", [])
+        for provider in providers:
+            provider_name = provider.get("name", "")
+            models = provider.get("models", [])
+            for model in models:
+                model_name = model.get("name", "")
+                full_model_name = f"{model_name}/{provider_name}"
+                available_models.add(full_model_name)
+        
         # 验证模型是否存在
-        available_models = {m["name"] for m in config.get("models", [])}
         for model in request.models:
             if model not in available_models:
                 raise HTTPException(
@@ -613,18 +643,27 @@ async def get_models():
     """
     try:
         config = load_config()
-        models = config.get("models", [])
+        providers = config.get("providers", [])
         chairman = config.get("chairman", "")
         
-        # 格式化模型信息
+        # 格式化模型信息 - 从所有供应商中提取模型
         formatted_models = []
-        for model in models:
-            formatted_models.append({
-                "name": model.get("name", ""),
-                "display_name": model.get("display_name", ""),
-                "description": model.get("description", ""),
-                "is_chairman": model.get("name") == chairman
-            })
+        for provider in providers:
+            provider_name = provider.get("name", "")
+            models = provider.get("models", [])
+            
+            for model in models:
+                model_name = model.get("name", "")
+                # 模型全名格式: 模型名称/供应商
+                full_model_name = f"{model_name}/{provider_name}"
+                
+                formatted_models.append({
+                    "name": full_model_name,
+                    "display_name": model.get("display_name", model_name),
+                    "description": model.get("description", ""),
+                    "provider": provider_name,
+                    "is_chairman": full_model_name == chairman
+                })
         
         return {
             "models": formatted_models,
@@ -762,12 +801,33 @@ async def get_models_config():
     """
     try:
         config = load_config()
-        models = config.get("models", [])
+        providers = config.get("providers", [])
         chairman = config.get("chairman", "")
+        
+        # 构建模型配置列表（兼容旧格式）
+        models = []
+        for provider in providers:
+            provider_name = provider.get("name", "")
+            provider_models = provider.get("models", [])
+            
+            for model in provider_models:
+                model_name = model.get("name", "")
+                full_model_name = f"{model_name}/{provider_name}"
+                
+                models.append({
+                    "name": full_model_name,
+                    "display_name": model.get("display_name", model_name),
+                    "description": model.get("description", ""),
+                    "url": provider.get("url", ""),
+                    "api_key": provider.get("api_key", ""),
+                    "api_type": provider.get("api_type", "openai"),
+                    "provider": provider_name
+                })
         
         return {
             "models": models,
-            "chairman": chairman
+            "chairman": chairman,
+            "providers": providers
         }
         
     except Exception as e:
@@ -1523,7 +1583,10 @@ from provider_manager import (
     update_provider,
     delete_provider,
     fetch_provider_models,
-    test_model
+    test_model,
+    get_provider_models,
+    add_model_to_provider,
+    delete_model_from_provider
 )
 
 
@@ -1677,9 +1740,38 @@ async def delete_provider_endpoint(provider_name: str):
 
 
 @app.get("/api/providers/{provider_name}/models")
-async def get_provider_models(provider_name: str):
+async def get_provider_models_endpoint(provider_name: str):
     """
-    获取供应商的模型列表
+    获取供应商下已添加的模型列表
+    
+    Args:
+        provider_name: 供应商名称
+    
+    Returns:
+        模型列表
+    """
+    try:
+        models, error = get_provider_models(provider_name)
+        
+        if error:
+            raise HTTPException(status_code=400, detail=error)
+        
+        return {
+            "provider": provider_name,
+            "models": models,
+            "total": len(models) if models else 0
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取供应商模型列表错误: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.get("/api/providers/{provider_name}/models/fetch")
+async def fetch_provider_models_endpoint(provider_name: str):
+    """
+    从供应商API获取可用模型列表
     
     Args:
         provider_name: 供应商名称
@@ -1701,7 +1793,7 @@ async def get_provider_models(provider_name: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"获取供应商模型列表错误: {e}", exc_info=True)
+        logger.error(f"获取供应商API模型列表错误: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -1732,85 +1824,72 @@ async def test_provider_model(provider_name: str = Query(...), model_name: str =
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@app.post("/api/providers/models/add")
-async def add_model_from_provider(request: ModelAddRequest):
+@app.post("/api/providers/{provider_name}/models")
+async def add_model_to_provider_endpoint(provider_name: str, request: ModelAddRequest):
     """
-    从供应商添加模型到本地配置
+    添加模型到供应商
     
     Args:
+        provider_name: 供应商名称
         request: 添加模型请求
     
     Returns:
         添加结果
     """
     try:
-        # 获取供应商信息
-        providers = load_providers()
-        provider = None
-        for p in providers:
-            if p["name"] == request.provider_name:
-                provider = p
-                break
+        success, error = add_model_to_provider(
+            provider_name=provider_name,
+            model_name=request.model_id,
+            display_name=request.display_name,
+            description=request.description
+        )
         
-        if not provider:
-            raise HTTPException(status_code=404, detail="供应商不存在")
+        if not success:
+            raise HTTPException(status_code=400, detail=error)
         
-        # 加载当前配置
-        config = load_config()
-        models = config.get("models", [])
-        
-        # 检查模型是否已存在
-        if any(m["name"] == request.model_id for m in models):
-            raise HTTPException(status_code=400, detail="模型已存在于本地配置")
-        
-        # 构建新模型配置
-        new_model = {
-            "name": request.model_id,
-            "display_name": request.display_name,
-            "description": request.description,
-            "url": provider["url"],
-            "api_key": provider["api_key"],
-            "provider": request.provider_name,
-            "api_type": provider["api_type"]
-        }
-        
-        # 添加到模型列表
-        models.append(new_model)
-        config["models"] = models
-        
-        # 保存配置
-        config_paths = [
-            "config.json",
-            "backend/config.json",
-            "../backend/config.json"
-        ]
-        
-        config_path = None
-        for path in config_paths:
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    json.load(f)
-                    config_path = path
-                    break
-            except FileNotFoundError:
-                continue
-        
-        if not config_path:
-            raise HTTPException(status_code=500, detail="配置文件未找到")
-        
-        with open(config_path, "w", encoding="utf-8") as f:
-            json.dump(config, f, ensure_ascii=False, indent=2)
-        
-        logger.info(f"模型已添加: {request.model_id} (来自供应商: {request.provider_name})")
+        logger.info(f"模型已添加: {request.model_id} (供应商: {provider_name})")
         
         return {
             "message": "模型添加成功",
-            "model": new_model
+            "provider": provider_name,
+            "model_name": request.model_id
         }
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"添加模型错误: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.delete("/api/providers/{provider_name}/models/{model_name}")
+async def delete_model_from_provider_endpoint(provider_name: str, model_name: str):
+    """
+    从供应商删除模型
+    
+    Args:
+        provider_name: 供应商名称
+        model_name: 模型名称
+    
+    Returns:
+        删除结果
+    """
+    try:
+        success, error = delete_model_from_provider(provider_name, model_name)
+        
+        if not success:
+            raise HTTPException(status_code=400, detail=error)
+        
+        logger.info(f"模型已删除: {model_name} (供应商: {provider_name})")
+        
+        return {
+            "message": "模型删除成功",
+            "provider": provider_name,
+            "model_name": model_name
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"删除模型错误: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 

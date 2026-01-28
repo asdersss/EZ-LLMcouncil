@@ -63,9 +63,20 @@ async def query_model(
             "error": error_msg
         }
     
+    # 提取实际的模型名称（去掉供应商后缀）
+    # 模型名称格式为 "model_name/provider"，需要去掉最后的 "/provider"
+    # 注意：model_name 本身可能包含 '/'，如 "Qwen/Qwen3-VL-30B/provider"
+    # 所以我们需要去掉最后一个 '/' 及其后面的内容
+    if '/' in model_name:
+        # 找到最后一个 '/' 的位置，去掉供应商部分
+        parts = model_name.rsplit('/', 1)  # 从右边分割，只分割一次
+        actual_model_name = parts[0]  # 取前面的部分作为实际模型名
+    else:
+        actual_model_name = model_name
+    
     # 构建请求体
     request_body = {
-        "model": model_name,
+        "model": actual_model_name,
         "messages": messages,
         "temperature": temperature
     }

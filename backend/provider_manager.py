@@ -11,32 +11,70 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-# 供应商配置文件路径
-PROVIDERS_FILE = "backend/providers.json"
+# 配置文件路径
+CONFIG_FILE = "backend/config.json"
+
+
+def load_config() -> Dict[str, Any]:
+    """加载配置文件"""
+    try:
+        # 尝试多个可能的配置文件路径
+        config_paths = [
+            "config.json",
+            "backend/config.json",
+            "../backend/config.json"
+        ]
+        
+        for config_path in config_paths:
+            try:
+                with open(config_path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except FileNotFoundError:
+                continue
+        
+        logger.error("未找到配置文件")
+        return {"providers": [], "chairman": "", "settings": {}}
+    except Exception as e:
+        logger.error(f"加载配置文件失败: {e}")
+        return {"providers": [], "chairman": "", "settings": {}}
+
+
+def save_config(config: Dict[str, Any]) -> bool:
+    """保存配置文件"""
+    try:
+        # 尝试多个可能的配置文件路径
+        config_paths = [
+            "config.json",
+            "backend/config.json",
+            "../backend/config.json"
+        ]
+        
+        config_path = None
+        for path in config_paths:
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    json.load(f)
+                    config_path = path
+                    break
+            except FileNotFoundError:
+                continue
+        
+        if not config_path:
+            # 如果都不存在，使用默认路径
+            config_path = "backend/config.json"
+        
+        with open(config_path, "w", encoding="utf-8") as f:
+            json.dump(config, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        logger.error(f"保存配置文件失败: {e}")
+        return False
 
 
 def load_providers() -> List[Dict[str, Any]]:
     """加载供应商配置"""
-    try:
-        with open(PROVIDERS_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            return data.get("providers", [])
-    except FileNotFoundError:
-        return []
-    except Exception as e:
-        logger.error(f"加载供应商配置失败: {e}")
-        return []
-
-
-def save_providers(providers: List[Dict[str, Any]]) -> bool:
-    """保存供应商配置"""
-    try:
-        with open(PROVIDERS_FILE, "w", encoding="utf-8") as f:
-            json.dump({"providers": providers}, f, ensure_ascii=False, indent=2)
-        return True
-    except Exception as e:
-        logger.error(f"保存供应商配置失败: {e}")
-        return False
+    config = load_config()
+    return config.get("providers", [])
 
 
 def add_provider(name: str, url: str, api_key: str, api_type: str) -> Tuple[bool, str]:
@@ -53,7 +91,8 @@ def add_provider(name: str, url: str, api_key: str, api_type: str) -> Tuple[bool
         (成功标志, 错误信息)
     """
     try:
-        providers = load_providers()
+        config = load_config()
+        providers = config.get("providers", [])
         
         # 检查名称是否重复
         if any(p["name"] == name for p in providers):
@@ -68,12 +107,14 @@ def add_provider(name: str, url: str, api_key: str, api_type: str) -> Tuple[bool
             "url": url,
             "api_key": api_key,
             "api_type": api_type.lower(),
+            "models": [],
             "created_at": datetime.utcnow().isoformat() + "Z"
         }
         
         providers.append(provider)
+        config["providers"] = providers
         
-        if save_providers(providers):
+        if save_config(config):
             return True, ""
         else:
             return False, "保存配置失败"
@@ -98,7 +139,8 @@ def update_provider(name: str, url: Optional[str] = None, api_key: Optional[str]
         (成功标志, 错误信息)
     """
     try:
-        providers = load_providers()
+        config = load_config()
+        providers = config.get("providers", [])
         
         # 查找供应商
         provider = None
@@ -122,7 +164,7 @@ def update_provider(name: str, url: Optional[str] = None, api_key: Optional[str]
         
         provider["updated_at"] = datetime.utcnow().isoformat() + "Z"
         
-        if save_providers(providers):
+        if save_config(config):
             return True, ""
         else:
             return False, "保存配置失败"
@@ -143,7 +185,8 @@ def delete_provider(name: str) -> Tuple[bool, str]:
         (成功标志, 错误信息)
     """
     try:
-        providers = load_providers()
+        config = load_config()
+        providers = config.get("providers", [])
         
         # 过滤掉要删除的供应商
         new_providers = [p for p in providers if p["name"] != name]
@@ -151,7 +194,9 @@ def delete_provider(name: str) -> Tuple[bool, str]:
         if len(new_providers) == len(providers):
             return False, "供应商不存在"
         
-        if save_providers(new_providers):
+        config["providers"] = new_providers
+        
+        if save_config(config):
             return True, ""
         else:
             return False, "保存配置失败"
@@ -161,9 +206,9 @@ def delete_provider(name: str) -> Tuple[bool, str]:
         return False, str(e)
 
 
-async def fetch_provider_models(provider_name: str) -> Tuple[Optional[List[Dict[str, Any]]], Optional[str]]:
+def get_provider_models(provider_name: str) -> Tuple[Optional[List[Dict[str, Any]]], Optional[str]]:
     """
-    获取供应商的模型列表
+    获取供应商下已添加的模型列表
     
     Args:
         provider_name: 供应商名称
@@ -172,7 +217,39 @@ async def fetch_provider_models(provider_name: str) -> Tuple[Optional[List[Dict[
         (模型列表, 错误信息)
     """
     try:
-        providers = load_providers()
+        config = load_config()
+        providers = config.get("providers", [])
+        
+        # 查找供应商
+        provider = None
+        for p in providers:
+            if p["name"] == provider_name:
+                provider = p
+                break
+        
+        if not provider:
+            return None, "供应商不存在"
+        
+        return provider.get("models", []), None
+            
+    except Exception as e:
+        logger.error(f"获取供应商模型列表失败: {e}")
+        return None, str(e)
+
+
+async def fetch_provider_models(provider_name: str) -> Tuple[Optional[List[Dict[str, Any]]], Optional[str]]:
+    """
+    从供应商API获取可用模型列表
+    
+    Args:
+        provider_name: 供应商名称
+    
+    Returns:
+        (模型列表, 错误信息)
+    """
+    try:
+        config = load_config()
+        providers = config.get("providers", [])
         
         # 查找供应商
         provider = None
@@ -244,6 +321,104 @@ async def fetch_provider_models(provider_name: str) -> Tuple[Optional[List[Dict[
         return None, str(e)
 
 
+def add_model_to_provider(provider_name: str, model_name: str, display_name: str, description: str = "") -> Tuple[bool, str]:
+    """
+    添加模型到供应商
+    
+    Args:
+        provider_name: 供应商名称
+        model_name: 模型名称（API中的模型ID）
+        display_name: 显示名称
+        description: 模型描述
+    
+    Returns:
+        (成功标志, 错误信息)
+    """
+    try:
+        config = load_config()
+        providers = config.get("providers", [])
+        
+        # 查找供应商
+        provider = None
+        for p in providers:
+            if p["name"] == provider_name:
+                provider = p
+                break
+        
+        if not provider:
+            return False, "供应商不存在"
+        
+        # 检查模型是否已存在
+        if "models" not in provider:
+            provider["models"] = []
+        
+        if any(m["name"] == model_name for m in provider["models"]):
+            return False, "模型已存在"
+        
+        # 添加模型
+        model = {
+            "name": model_name,
+            "display_name": display_name,
+            "description": description
+        }
+        
+        provider["models"].append(model)
+        
+        if save_config(config):
+            return True, ""
+        else:
+            return False, "保存配置失败"
+            
+    except Exception as e:
+        logger.error(f"添加模型失败: {e}")
+        return False, str(e)
+
+
+def delete_model_from_provider(provider_name: str, model_name: str) -> Tuple[bool, str]:
+    """
+    从供应商删除模型
+    
+    Args:
+        provider_name: 供应商名称
+        model_name: 模型名称
+    
+    Returns:
+        (成功标志, 错误信息)
+    """
+    try:
+        config = load_config()
+        providers = config.get("providers", [])
+        
+        # 查找供应商
+        provider = None
+        for p in providers:
+            if p["name"] == provider_name:
+                provider = p
+                break
+        
+        if not provider:
+            return False, "供应商不存在"
+        
+        # 删除模型
+        if "models" not in provider:
+            return False, "模型不存在"
+        
+        original_count = len(provider["models"])
+        provider["models"] = [m for m in provider["models"] if m["name"] != model_name]
+        
+        if len(provider["models"]) == original_count:
+            return False, "模型不存在"
+        
+        if save_config(config):
+            return True, ""
+        else:
+            return False, "保存配置失败"
+            
+    except Exception as e:
+        logger.error(f"删除模型失败: {e}")
+        return False, str(e)
+
+
 async def test_model(provider_name: str, model_name: str) -> Tuple[bool, Optional[str], Optional[str]]:
     """
     测试模型是否可用
@@ -256,7 +431,8 @@ async def test_model(provider_name: str, model_name: str) -> Tuple[bool, Optiona
         (是否成功, 响应内容, 错误信息)
     """
     try:
-        providers = load_providers()
+        config = load_config()
+        providers = config.get("providers", [])
         
         # 查找供应商
         provider = None
@@ -316,6 +492,12 @@ async def test_model(provider_name: str, model_name: str) -> Tuple[bool, Optiona
                 response = await client.post(url, json=request_body, headers=headers)
                 response.raise_for_status()
                 
+                # 检查响应内容类型
+                content_type = response.headers.get("content-type", "")
+                if "text/html" in content_type:
+                    logger.error(f"API返回HTML页面而不是JSON，URL可能不正确: {url}")
+                    return False, None, f"API URL配置错误：返回HTML页面。Anthropic API的URL应该是 https://api.anthropic.com/v1/messages，请检查您的配置。"
+                
                 # 检查响应内容
                 response_text = response.text
                 if not response_text or response_text.strip() == "":
@@ -325,7 +507,7 @@ async def test_model(provider_name: str, model_name: str) -> Tuple[bool, Optiona
                     data = response.json()
                 except json.JSONDecodeError as e:
                     logger.error(f"JSON 解析失败，响应内容: {response_text[:200]}")
-                    return False, None, f"API 返回非 JSON 格式响应: {str(e)}"
+                    return False, None, f"API 返回非 JSON 格式响应: {str(e)}。请检查URL配置是否正确。"
                 
                 # 提取响应内容
                 content = ""

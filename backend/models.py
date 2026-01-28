@@ -27,7 +27,7 @@ class ChatRequest(BaseModel):
     """聊天请求模型"""
     conv_id: Optional[str] = Field(None, description="对话 ID，不提供则创建新对话")
     content: str = Field("", max_length=10000, description="用户消息内容")
-    models: List[str] = Field(..., min_length=1, max_length=20, description="参会模型列表")
+    models: List[str] = Field(..., min_length=1, max_length=1000, description="参会模型列表")
     attachments: Optional[List[Attachment]] = Field(None, description="附件列表")
     
     @field_validator('attachments', mode='after')
@@ -48,8 +48,8 @@ class ChatRequest(BaseModel):
         """验证模型列表"""
         if not v:
             raise ValueError("至少需要选择 1 个模型")
-        if len(v) > 20:
-            raise ValueError("最多只能选择 20 个模型")
+        if len(v) > 50:
+            raise ValueError("最多只能选择 50 个模型")
         return v
 
 

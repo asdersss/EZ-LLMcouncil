@@ -8,6 +8,11 @@ import ProviderManager from './components/ProviderManager';
 import './App.css';
 
 /**
+ * 弹窗类型
+ */
+export type ModalType = 'settings' | 'fileManager' | 'providerManager' | 'contextManager' | 'modelSelector' | null;
+
+/**
  * 主应用组件
  * 管理对话列表、当前对话和模型列表
  */
@@ -17,9 +22,8 @@ function App() {
   const [models, setModels] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showSettings, setShowSettings] = useState(false);
-  const [showFileManager, setShowFileManager] = useState(false);
-  const [showProviderManager, setShowProviderManager] = useState(false);
+  // 统一的弹窗状态管理 - 同一时间只能打开一个弹窗
+  const [activeModal, setActiveModal] = useState<ModalType>(null);
 
   // 初始化：加载对话列表和模型列表
   useEffect(() => {
@@ -138,9 +142,9 @@ function App() {
         onConversationChange={handleSelectConversation}
         onNewConversation={handleNewConversation}
         onDeleteConversation={handleDeleteConversation}
-        onOpenSettings={() => setShowSettings(true)}
-        onOpenFileManager={() => setShowFileManager(true)}
-        onOpenProviderManager={() => setShowProviderManager(true)}
+        onOpenSettings={() => setActiveModal('settings')}
+        onOpenFileManager={() => setActiveModal('fileManager')}
+        onOpenProviderManager={() => setActiveModal('providerManager')}
       />
       
       <ChatInterface
@@ -148,22 +152,24 @@ function App() {
         models={models}
         onRefreshModels={handleRefreshModels}
         onUpdateTitle={handleUpdateConversationTitle}
+        activeModal={activeModal}
+        onSetActiveModal={setActiveModal}
       />
       
       {/* 设置弹窗 */}
-      {showSettings && (
-        <Settings onClose={() => setShowSettings(false)} />
+      {activeModal === 'settings' && (
+        <Settings onClose={() => setActiveModal(null)} />
       )}
       
       {/* 全局文件管理器 */}
-      {showFileManager && (
-        <FileManager onClose={() => setShowFileManager(false)} />
+      {activeModal === 'fileManager' && (
+        <FileManager onClose={() => setActiveModal(null)} />
       )}
       
       {/* 供应商管理器 */}
-      {showProviderManager && (
+      {activeModal === 'providerManager' && (
         <ProviderManager
-          onClose={() => setShowProviderManager(false)}
+          onClose={() => setActiveModal(null)}
           onRefresh={handleRefreshModels}
         />
       )}

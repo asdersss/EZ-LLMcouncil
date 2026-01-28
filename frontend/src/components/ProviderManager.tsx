@@ -20,8 +20,19 @@ interface Provider {
 interface Model {
   id: string;
   name: string;
+  display_name?: string;
+  description?: string;
   created?: number;
   owned_by?: string;
+}
+
+/**
+ * 已添加的模型接口
+ */
+interface AddedModel {
+  name: string;
+  display_name: string;
+  description?: string;
 }
 
 /**
@@ -31,6 +42,13 @@ interface ModelTestStatus {
   status: 'idle' | 'testing' | 'success' | 'warning' | 'error';
   message?: string;
   response?: string;
+}
+
+/**
+ * 可用模型选择状态
+ */
+interface AvailableModelSelection {
+  [modelId: string]: boolean;
 }
 
 /**
@@ -51,9 +69,17 @@ function ProviderManager({ onClose, onRefresh }: ProviderManagerProps) {
   const [error, setError] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
-  const [providerModels, setProviderModels] = useState<Model[]>([]);
+  const [addedModels, setAddedModels] = useState<AddedModel[]>([]);
+  const [availableModels, setAvailableModels] = useState<Model[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
+  const [loadingAvailable, setLoadingAvailable] = useState(false);
   const [modelTestStatus, setModelTestStatus] = useState<Record<string, ModelTestStatus>>({});
+  const [showManualAdd, setShowManualAdd] = useState(false);
+  const [showAvailableModels, setShowAvailableModels] = useState(false);
+  const [selectedModels, setSelectedModels] = useState<AvailableModelSelection>({});
+  const [manualModelName, setManualModelName] = useState('');
+  const [manualDisplayName, setManualDisplayName] = useState('');
+  const [manualDescription, setManualDescription] = useState('');
 
   // 新供应商表单
   const [newProvider, setNewProvider] = useState({
@@ -130,7 +156,8 @@ function ProviderManager({ onClose, onRefresh }: ProviderManagerProps) {
       await loadProviders();
       if (selectedProvider === name) {
         setSelectedProvider(null);
-        setProviderModels([]);
+        setAddedModels([]);
+        setAvailableModels([]);
       }
     } catch (err: any) {
       setError('删除供应商失败: ' + err.message);
@@ -138,13 +165,14 @@ function ProviderManager({ onClose, onRefresh }: ProviderManagerProps) {
     }
   };
 
-  // 获取供应商模型列表
-  const handleFetchModels = async (providerName: string) => {
+  // 选择供应商，加载已添加的模型
+  const handleSelectProvider = async (providerName: string) => {
     try {
       setLoadingModels(true);
       setError(null);
       setSelectedProvider(providerName);
       setModelTestStatus({});
+      setAvailableModels([]);
 
       const response = await fetch(
         `http://localhost:8007/api/providers/${encodeURIComponent(providerName)}/models`
@@ -156,14 +184,67 @@ function ProviderManager({ onClose, onRefresh }: ProviderManagerProps) {
       }
 
       const data = await response.json();
-      setProviderModels(data.models || []);
+      setAddedModels(data.models || []);
     } catch (err: any) {
       setError('获取模型列表失败: ' + err.message);
       console.error('获取模型列表失败:', err);
-      setProviderModels([]);
+      setAddedModels([]);
     } finally {
       setLoadingModels(false);
     }
+  };
+
+  // 获取供应商可用模型列表并显示弹窗
+  const handleFetchAvailableModels = async () => {
+    if (!selectedProvider) return;
+
+    try {
+      setLoadingAvailable(true);
+      setError(null);
+      setSelectedModels({});
+      setModelTestStatus({});
+
+      const response = await fetch(
+        `http://localhost:8007/api/providers/${encodeURIComponent(selectedProvider)}/models/fetch`
+      );
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.detail || '获取可用模型列表失败');
+      }
+
+      const data = await response.json();
+      setAvailableModels(data.models || []);
+      setShowAvailableModels(true);
+    } catch (err: any) {
+      setError('获取可用模型列表失败: ' + err.message);
+      console.error('获取可用模型列表失败:', err);
+      setAvailableModels([]);
+    } finally {
+      setLoadingAvailable(false);
+    }
+  };
+
+  // 切换模型选择
+  const toggleModelSelection = (modelId: string) => {
+    setSelectedModels(prev => ({
+      ...prev,
+      [modelId]: !prev[modelId]
+    }));
+  };
+
+  // 全选/取消全选
+  const toggleSelectAll = () => {
+    const allSelected = availableModels.every(m => selectedModels[m.id]);
+    const newSelection: AvailableModelSelection = {};
+    
+    if (!allSelected) {
+      availableModels.forEach(m => {
+        newSelection[m.id] = true;
+      });
+    }
+    
+    setSelectedModels(newSelection);
   };
 
   // 测试模型
@@ -177,10 +258,11 @@ function ProviderManager({ onClose, onRefresh }: ProviderManagerProps) {
       }));
 
       const response = await fetch(
-        `http://localhost:8007/api/providers/models/test?provider_name=${encodeURIComponent(providerName)}&model_name=${encodeURIComponent(modelName)}`
-      , {
-        method: 'POST'
-      });
+        `http://localhost:8007/api/providers/models/test?provider_name=${encodeURIComponent(providerName)}&model_name=${encodeURIComponent(modelName)}`,
+        {
+          method: 'POST'
+        }
+      );
 
       const data = await response.json();
 
@@ -213,35 +295,125 @@ function ProviderManager({ onClose, onRefresh }: ProviderManagerProps) {
     }
   };
 
-  // 添加模型到本地配置
-  const handleAddModelToLocal = async (providerName: string, model: Model) => {
-    const displayName = prompt('请输入模型显示名称:', model.name);
-    if (!displayName) return;
+  // 批量添加选中的模型
+  const handleBatchAddModels = async () => {
+    if (!selectedProvider) return;
 
-    const description = prompt('请输入模型描述（可选）:', '') || '';
+    const modelsToAdd = availableModels.filter(m => selectedModels[m.id]);
+    
+    if (modelsToAdd.length === 0) {
+      setError('请至少选择一个模型');
+      return;
+    }
 
     try {
-      const response = await fetch('http://localhost:8007/api/providers/models/add', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          provider_name: providerName,
-          model_id: model.id,
-          display_name: displayName,
-          description: description
-        })
-      });
+      let successCount = 0;
+      let failCount = 0;
+
+      for (const model of modelsToAdd) {
+        try {
+          const response = await fetch(
+            `http://localhost:8007/api/providers/${encodeURIComponent(selectedProvider)}/models`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                provider_name: selectedProvider,
+                model_id: model.id,
+                display_name: model.name,
+                description: model.owned_by ? `by ${model.owned_by}` : ''
+              })
+            }
+          );
+
+          if (response.ok) {
+            successCount++;
+          } else {
+            failCount++;
+          }
+        } catch {
+          failCount++;
+        }
+      }
+
+      if (successCount > 0) {
+        alert(`成功添加 ${successCount} 个模型${failCount > 0 ? `，失败 ${failCount} 个` : ''}`);
+        setShowAvailableModels(false);
+        setSelectedModels({});
+        await handleSelectProvider(selectedProvider);
+        await onRefresh();
+      } else {
+        setError('所有模型添加失败');
+      }
+    } catch (err: any) {
+      setError('批量添加模型失败: ' + err.message);
+      console.error('批量添加模型失败:', err);
+    }
+  };
+
+  // 手动添加模型
+  const handleManualAddModel = async () => {
+    if (!selectedProvider || !manualModelName || !manualDisplayName) {
+      setError('请填写模型名称和显示名称');
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `http://localhost:8007/api/providers/${encodeURIComponent(selectedProvider)}/models`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            provider_name: selectedProvider,
+            model_id: manualModelName,
+            display_name: manualDisplayName,
+            description: manualDescription
+          })
+        }
+      );
 
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.detail || '添加模型失败');
       }
 
-      alert('模型已添加到本地配置');
+      alert('模型已添加');
+      setShowManualAdd(false);
+      setManualModelName('');
+      setManualDisplayName('');
+      setManualDescription('');
+      await handleSelectProvider(selectedProvider);
       await onRefresh();
     } catch (err: any) {
       setError('添加模型失败: ' + err.message);
       console.error('添加模型失败:', err);
+    }
+  };
+
+  // 删除已添加的模型
+  const handleDeleteModel = async (modelName: string) => {
+    if (!selectedProvider) return;
+    if (!confirm(`确定要删除模型 "${modelName}" 吗？`)) return;
+
+    try {
+      const response = await fetch(
+        `http://localhost:8007/api/providers/${encodeURIComponent(selectedProvider)}/models/${encodeURIComponent(modelName)}`,
+        {
+          method: 'DELETE'
+        }
+      );
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.detail || '删除模型失败');
+      }
+
+      await handleSelectProvider(selectedProvider);
+      await onRefresh();
+    } catch (err: any) {
+      setError('删除模型失败: ' + err.message);
+      console.error('删除模型失败:', err);
     }
   };
 
@@ -262,9 +434,10 @@ function ProviderManager({ onClose, onRefresh }: ProviderManagerProps) {
   };
 
   return (
-    <>
-      {/* 添加供应商弹窗 */}
-      {showAddForm && (
+    <div className="provider-manager-overlay" onClick={onClose}>
+      <div className="provider-manager-wrapper" onClick={(e) => e.stopPropagation()}>
+        {/* 添加供应商弹窗 */}
+        {showAddForm && (
         <div className="provider-overlay" onClick={() => setShowAddForm(false)}>
           <div className="provider-popup" onClick={(e) => e.stopPropagation()}>
             <div className="provider-popup-header">
@@ -326,6 +499,142 @@ function ProviderManager({ onClose, onRefresh }: ProviderManagerProps) {
         </div>
       )}
 
+      {/* 可用模型弹窗 */}
+      {showAvailableModels && (
+        <div className="provider-overlay" onClick={() => setShowAvailableModels(false)}>
+          <div className="provider-popup large-popup" onClick={(e) => e.stopPropagation()}>
+            <div className="provider-popup-header">
+              <h3>可用模型列表 - {selectedProvider}</h3>
+              <button className="close-btn" onClick={() => setShowAvailableModels(false)}>×</button>
+            </div>
+            <div className="provider-popup-body scrollable">
+              {loadingAvailable ? (
+                <div className="provider-loading">
+                  <div className="loading"></div>
+                  <span>获取可用模型中...</span>
+                </div>
+              ) : availableModels.length === 0 ? (
+                <div className="empty-state">暂无可用模型</div>
+              ) : (
+                <>
+                  <div className="batch-actions">
+                    <button
+                      className="select-all-btn"
+                      onClick={toggleSelectAll}
+                    >
+                      {availableModels.every(m => selectedModels[m.id]) ? '取消全选' : '全选'}
+                    </button>
+                    <span className="selected-count">
+                      已选择 {Object.values(selectedModels).filter(Boolean).length} / {availableModels.length}
+                    </span>
+                  </div>
+                  <div className="available-model-list">
+                    {availableModels.map((model) => {
+                      const key = `${selectedProvider}:${model.id}`;
+                      const testStatus = modelTestStatus[key];
+                      const isSelected = selectedModels[model.id];
+                      
+                      return (
+                        <div
+                          key={model.id}
+                          className={`available-model-item ${isSelected ? 'selected' : ''}`}
+                        >
+                          <div className="model-checkbox">
+                            <input
+                              type="checkbox"
+                              checked={isSelected || false}
+                              onChange={() => toggleModelSelection(model.id)}
+                            />
+                          </div>
+                          <div className="model-info">
+                            <h4>{model.name}</h4>
+                            {model.owned_by && (
+                              <span className="model-owner">by {model.owned_by}</span>
+                            )}
+                          </div>
+                          <div className="model-actions">
+                            {testStatus && getStatusIcon(testStatus)}
+                            <button
+                              className="test-btn"
+                              onClick={() => handleTestModel(selectedProvider!, model.id)}
+                              disabled={testStatus?.status === 'testing'}
+                              title="测试模型"
+                            >
+                              🧪 测试
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="provider-popup-footer">
+              <button className="cancel-btn" onClick={() => setShowAvailableModels(false)}>取消</button>
+              <button
+                className="add-btn"
+                onClick={handleBatchAddModels}
+                disabled={Object.values(selectedModels).filter(Boolean).length === 0}
+              >
+                添加选中的模型 ({Object.values(selectedModels).filter(Boolean).length})
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 手动添加模型弹窗 */}
+      {showManualAdd && (
+        <div className="provider-overlay" onClick={() => setShowManualAdd(false)}>
+          <div className="provider-popup" onClick={(e) => e.stopPropagation()}>
+            <div className="provider-popup-header">
+              <h3>手动添加模型</h3>
+              <button className="close-btn" onClick={() => setShowManualAdd(false)}>×</button>
+            </div>
+            <div className="provider-popup-body">
+              <div className="form-group">
+                <label>
+                  模型名称 <span className="required">*</span>
+                  <input
+                    type="text"
+                    value={manualModelName}
+                    onChange={(e) => setManualModelName(e.target.value)}
+                    placeholder="例如: gpt-4"
+                  />
+                </label>
+              </div>
+              <div className="form-group">
+                <label>
+                  显示名称 <span className="required">*</span>
+                  <input
+                    type="text"
+                    value={manualDisplayName}
+                    onChange={(e) => setManualDisplayName(e.target.value)}
+                    placeholder="例如: GPT-4"
+                  />
+                </label>
+              </div>
+              <div className="form-group">
+                <label>
+                  模型描述
+                  <input
+                    type="text"
+                    value={manualDescription}
+                    onChange={(e) => setManualDescription(e.target.value)}
+                    placeholder="可选"
+                  />
+                </label>
+              </div>
+            </div>
+            <div className="provider-popup-footer">
+              <button className="cancel-btn" onClick={() => setShowManualAdd(false)}>取消</button>
+              <button className="add-btn" onClick={handleManualAddModel}>添加</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="provider-manager">
         <div className="provider-manager-header">
           <h2>供应商管理</h2>
@@ -362,7 +671,7 @@ function ProviderManager({ onClose, onRefresh }: ProviderManagerProps) {
                     <div
                       key={provider.name}
                       className={`provider-item ${selectedProvider === provider.name ? 'selected' : ''}`}
-                      onClick={() => handleFetchModels(provider.name)}
+                      onClick={() => handleSelectProvider(provider.name)}
                     >
                       <div className="provider-info">
                         <h4>{provider.name}</h4>
@@ -389,66 +698,84 @@ function ProviderManager({ onClose, onRefresh }: ProviderManagerProps) {
               <div className="section-header">
                 <h3>模型列表</h3>
                 {selectedProvider && (
-                  <button
-                    className="refresh-btn"
-                    onClick={() => handleFetchModels(selectedProvider)}
-                    disabled={loadingModels}
-                  >
-                    🔄 刷新
-                  </button>
+                  <div className="header-actions">
+                    <button
+                      className="fetch-btn"
+                      onClick={handleFetchAvailableModels}
+                      disabled={loadingAvailable}
+                    >
+                      🔍 获取可用模型
+                    </button>
+                    <button
+                      className="manual-add-btn"
+                      onClick={() => setShowManualAdd(true)}
+                    >
+                      ➕ 手动添加
+                    </button>
+                  </div>
                 )}
               </div>
               {!selectedProvider ? (
                 <div className="empty-state">请选择一个供应商查看模型</div>
-              ) : loadingModels ? (
-                <div className="provider-loading">
-                  <div className="loading"></div>
-                  <span>加载模型列表中...</span>
-                </div>
-              ) : providerModels.length === 0 ? (
-                <div className="empty-state">该供应商暂无可用模型</div>
               ) : (
-                <div className="model-list">
-                  {providerModels.map((model) => {
-                    const key = `${selectedProvider}:${model.id}`;
-                    const testStatus = modelTestStatus[key];
-                    
-                    return (
-                      <div key={model.id} className="model-item">
-                        <div className="model-info">
-                          <h4>{model.name}</h4>
-                          {model.owned_by && (
-                            <span className="model-owner">by {model.owned_by}</span>
-                          )}
-                        </div>
-                        <div className="model-actions">
-                          {testStatus && getStatusIcon(testStatus)}
-                          <button
-                            className="test-btn"
-                            onClick={() => handleTestModel(selectedProvider, model.id)}
-                            disabled={testStatus?.status === 'testing'}
-                            title="测试模型"
-                          >
-                            🧪 测试
-                          </button>
-                          <button
-                            className="add-model-btn"
-                            onClick={() => handleAddModelToLocal(selectedProvider, model)}
-                            title="添加到本地"
-                          >
-                            ➕ 添加
-                          </button>
-                        </div>
+                <>
+                  {/* 已添加的模型 */}
+                  <div className="added-models-section">
+                    <h4>已添加的模型</h4>
+                    {loadingModels ? (
+                      <div className="provider-loading">
+                        <div className="loading"></div>
+                        <span>加载模型列表中...</span>
                       </div>
-                    );
-                  })}
-                </div>
+                    ) : addedModels.length === 0 ? (
+                      <div className="empty-state">该供应商暂无已添加的模型</div>
+                    ) : (
+                      <div className="model-list">
+                        {addedModels.map((model) => {
+                          const key = `${selectedProvider}:${model.name}`;
+                          const testStatus = modelTestStatus[key];
+                          
+                          return (
+                            <div key={model.name} className="model-item">
+                              <div className="model-info">
+                                <h4>{model.display_name}</h4>
+                                <span className="model-name">{model.name}</span>
+                                {model.description && (
+                                  <span className="model-description">{model.description}</span>
+                                )}
+                              </div>
+                              <div className="model-actions">
+                                {testStatus && getStatusIcon(testStatus)}
+                                <button
+                                  className="test-btn"
+                                  onClick={() => handleTestModel(selectedProvider, model.name)}
+                                  disabled={testStatus?.status === 'testing'}
+                                  title="测试模型"
+                                >
+                                  🧪 测试
+                                </button>
+                                <button
+                                  className="delete-model-btn"
+                                  onClick={() => handleDeleteModel(model.name)}
+                                  title="删除模型"
+                                >
+                                  🗑️
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </>
               )}
             </div>
           </div>
         )}
+        </div>
       </div>
-    </>
+    </div>
   );
 }
 

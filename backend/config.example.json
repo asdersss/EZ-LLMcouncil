@@ -1,19 +1,25 @@
 {
-  "models": [
+  "providers": [
     {
-      "name": "deepseek-chat",
-      "display_name": "DeepSeek Chat",
+      "name": "DeepSeek",
       "url": "https://api.deepseek.com/v1/chat/completions",
-      "api_key": "your-deepseek-api-key-here"
-    },
-    {
-      "name": "deepseek-reasoner",
-      "display_name": "DeepSeek Reasoner",
-      "url": "https://api.deepseek.com/v1/chat/completions",
-      "api_key": "your-deepseek-api-key-here"
+      "api_key": "your-deepseek-api-key-here",
+      "api_type": "openai",
+      "models": [
+        {
+          "name": "deepseek-chat",
+          "display_name": "DeepSeek Chat",
+          "description": "DeepSeek聊天模型"
+        },
+        {
+          "name": "deepseek-reasoner",
+          "display_name": "DeepSeek Reasoner",
+          "description": "DeepSeek推理模型"
+        }
+      ]
     }
   ],
-  "chairman": "claude-sonnet-4-5-20250929",
+  "chairman": "deepseek-chat/DeepSeek",
   "settings": {
     "temperature": 0.5,
     "max_concurrent": 100,

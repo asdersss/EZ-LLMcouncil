@@ -1,7 +1,25 @@
 import { useState, useEffect } from 'react';
 import { getModels } from '../utils/api';
-import ModelConfig from './ModelConfig';
 import './ModelSelector.css';
+
+/**
+ * 供应商分组的模型
+ */
+interface ProviderGroup {
+  provider: string;
+  models: ModelInfo[];
+}
+
+/**
+ * 模型信息
+ */
+interface ModelInfo {
+  name: string;
+  display_name: string;
+  description?: string;
+  provider: string;
+  is_chairman: boolean;
+}
 
 /**
  * ModelSelector 组件属性
@@ -14,13 +32,14 @@ interface ModelSelectorProps {
 
 /**
  * ModelSelector 组件
- * 显示可用模型列表，支持多选和主席模型标识
+ * 按供应商分组显示模型，支持跨供应商多选和主席模型配置
  */
 function ModelSelector({ selectedModels, onModelsChange, onRefreshModels }: ModelSelectorProps) {
-  const [models, setModels] = useState<any[]>([]);
+  const [providerGroups, setProviderGroups] = useState<ProviderGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showConfig, setShowConfig] = useState(false);
+  const [chairman, setChairman] = useState<string>('');
+  const [expandedProviders, setExpandedProviders] = useState<Set<string>>(new Set());
 
   // 加载模型列表
   useEffect(() => {
@@ -31,15 +50,44 @@ function ModelSelector({ selectedModels, onModelsChange, onRefreshModels }: Mode
     try {
       setLoading(true);
       setError(null);
-      const modelList = await getModels();
-      setModels(modelList);
+      const response = await getModels();
+      
+      // 按供应商分组
+      const groups: { [provider: string]: ModelInfo[] } = {};
+      let chairmanModel = '';
+      
+      response.forEach((model: any) => {
+        const provider = model.provider || 'Unknown';
+        if (!groups[provider]) {
+          groups[provider] = [];
+        }
+        groups[provider].push({
+          name: model.name,
+          display_name: model.display_name,
+          description: model.description,
+          provider: provider,
+          is_chairman: model.is_chairman
+        });
+        
+        if (model.is_chairman) {
+          chairmanModel = model.name;
+        }
+      });
+      
+      // 转换为数组
+      const groupArray = Object.keys(groups).map(provider => ({
+        provider,
+        models: groups[provider]
+      }));
+      
+      setProviderGroups(groupArray);
+      setChairman(chairmanModel);
+      // 默认展开所有供应商
+      setExpandedProviders(new Set(Object.keys(groups)));
       
       // 如果没有选中的模型，默认选中主席模型
-      if (selectedModels.length === 0 && modelList.length > 0) {
-        const chairModel = modelList.find(m => m.is_chair);
-        if (chairModel) {
-          onModelsChange([chairModel.name]);
-        }
+      if (selectedModels.length === 0 && chairmanModel) {
+        onModelsChange([chairmanModel]);
       }
     } catch (err) {
       setError('加载模型列表失败');
@@ -64,62 +112,98 @@ function ModelSelector({ selectedModels, onModelsChange, onRefreshModels }: Mode
     }
   };
 
-  // 全选/取消全选
-  const handleSelectAll = () => {
-    if (selectedModels.length === models.length) {
-      // 如果已全选，则取消全选(但至少保留第一个模型)
-      if (models.length > 0) {
-        onModelsChange([models[0].name]);
+  // 切换供应商展开/折叠
+  const toggleProvider = (provider: string) => {
+    const newExpanded = new Set(expandedProviders);
+    if (newExpanded.has(provider)) {
+      newExpanded.delete(provider);
+    } else {
+      newExpanded.add(provider);
+    }
+    setExpandedProviders(newExpanded);
+  };
+
+  // 全选/取消全选供应商下的模型
+  const toggleProviderModels = (provider: string, models: ModelInfo[]) => {
+    const providerModelNames = models.map(m => m.name);
+    const allSelected = providerModelNames.every(name => selectedModels.includes(name));
+    
+    if (allSelected) {
+      // 取消选择该供应商的所有模型
+      const newSelection = selectedModels.filter(name => !providerModelNames.includes(name));
+      // 至少保留一个模型
+      if (newSelection.length > 0) {
+        onModelsChange(newSelection);
       }
     } else {
-      // 全选
-      onModelsChange(models.map(m => m.name));
+      // 选择该供应商的所有模型
+      const newSelection = [...new Set([...selectedModels, ...providerModelNames])];
+      onModelsChange(newSelection);
     }
   };
 
-  // 处理配置保存后的回调
-  const handleConfigSave = async () => {
-    // 重新加载App.tsx中的模型列表
-    await onRefreshModels();
-    // 重新加载ModelSelector中的模型列表
-    await loadModels();
+  // 设置主席模型
+  const handleSetChairman = async (modelName: string) => {
+    try {
+      const response = await fetch('http://localhost:8007/api/models/config');
+      if (!response.ok) throw new Error('获取配置失败');
+      
+      const data = await response.json();
+      
+      // 更新主席模型
+      const updateResponse = await fetch('http://localhost:8007/api/models/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          models: data.models,
+          chairman: modelName
+        })
+      });
+      
+      if (!updateResponse.ok) throw new Error('更新主席模型失败');
+      
+      setChairman(modelName);
+      await onRefreshModels();
+      await loadModels();
+    } catch (err: any) {
+      setError('设置主席模型失败: ' + err.message);
+      console.error('设置主席模型失败:', err);
+    }
   };
 
+  // 全选/取消全选
+  const handleSelectAll = () => {
+    const allModelNames = providerGroups.flatMap(g => g.models.map(m => m.name));
+    
+    if (selectedModels.length === allModelNames.length) {
+      // 如果已全选，则取消全选(但至少保留第一个模型)
+      if (allModelNames.length > 0) {
+        onModelsChange([allModelNames[0]]);
+      }
+    } else {
+      // 全选
+      onModelsChange(allModelNames);
+    }
+  };
+
+  const totalModels = providerGroups.reduce((sum, g) => sum + g.models.length, 0);
+
   return (
-    <>
-      {showConfig && (
-        <div className="model-config-overlay" onClick={() => setShowConfig(false)}>
-          <div className="model-config-popup" onClick={(e) => e.stopPropagation()}>
-            <ModelConfig
-              onClose={() => setShowConfig(false)}
-              onSave={handleConfigSave}
-            />
-          </div>
-        </div>
-      )}
-      
-      <div className="model-selector">
-        <div className="model-selector-header">
-          <h3>选择模型</h3>
-          <div className="header-actions">
+    <div className="model-selector">
+      <div className="model-selector-header">
+        <h3>选择模型</h3>
+        <div className="header-actions">
+          {!loading && totalModels > 0 && (
             <button
-              className="config-btn"
-              onClick={() => setShowConfig(true)}
-              title="模型配置"
+              className="select-all-btn"
+              onClick={handleSelectAll}
+              title={selectedModels.length === totalModels ? '取消全选' : '全选'}
             >
-              ⚙️ 配置
+              {selectedModels.length === totalModels ? '取消全选' : '全选'}
             </button>
-            {!loading && models.length > 0 && (
-              <button
-                className="select-all-btn"
-                onClick={handleSelectAll}
-                title={selectedModels.length === models.length ? '取消全选' : '全选'}
-              >
-                {selectedModels.length === models.length ? '取消全选' : '全选'}
-              </button>
-            )}
-          </div>
+          )}
         </div>
+      </div>
 
       {error && (
         <div className="model-selector-error">
@@ -137,54 +221,110 @@ function ModelSelector({ selectedModels, onModelsChange, onRefreshModels }: Mode
         </div>
       ) : (
         <div className="model-list">
-          {models.length === 0 ? (
+          {providerGroups.length === 0 ? (
             <div className="empty-state">
               <p>暂无可用模型</p>
             </div>
           ) : (
-            models.map(model => (
-              <div
-                key={model.name}
-                className={`model-item ${selectedModels.includes(model.name) ? 'selected' : ''}`}
-                onClick={() => handleModelToggle(model.name)}
-              >
-                <div className="model-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={selectedModels.includes(model.name)}
-                    onChange={() => handleModelToggle(model.name)}
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                </div>
-                
-                <div className="model-info">
-                  <div className="model-name">
-                    {model.display_name || model.name}
-                    {model.is_chair && (
-                      <span className="chair-badge" title="主席模型">
-                        👑
-                      </span>
-                    )}
+            providerGroups.map(group => {
+              const isExpanded = expandedProviders.has(group.provider);
+              const providerModelNames = group.models.map(m => m.name);
+              const allSelected = providerModelNames.every(name => selectedModels.includes(name));
+              const someSelected = providerModelNames.some(name => selectedModels.includes(name));
+              
+              return (
+                <div key={group.provider} className="provider-group">
+                  <div className="provider-group-header">
+                    <button
+                      className="provider-toggle"
+                      onClick={() => toggleProvider(group.provider)}
+                    >
+                      <span className={`toggle-icon ${isExpanded ? 'expanded' : ''}`}>▶</span>
+                      <span className="provider-name">{group.provider}</span>
+                      <span className="provider-count">({group.models.length})</span>
+                    </button>
+                    <button
+                      className={`provider-select-all ${allSelected ? 'all-selected' : someSelected ? 'some-selected' : ''}`}
+                      onClick={() => toggleProviderModels(group.provider, group.models)}
+                      title={allSelected ? '取消全选' : '全选'}
+                    >
+                      {allSelected ? '✓' : someSelected ? '◐' : '○'}
+                    </button>
                   </div>
-                  {model.description && (
-                    <div className="model-description">
-                      {model.description}
+                  
+                  {isExpanded && (
+                    <div className="provider-models">
+                      {group.models.map(model => (
+                        <div
+                          key={model.name}
+                          className={`model-item ${selectedModels.includes(model.name) ? 'selected' : ''}`}
+                          onClick={() => handleModelToggle(model.name)}
+                        >
+                          <div className="model-checkbox">
+                            <input
+                              type="checkbox"
+                              checked={selectedModels.includes(model.name)}
+                              onChange={() => handleModelToggle(model.name)}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          </div>
+                          
+                          <div className="model-info">
+                            <div className="model-name">
+                              {model.display_name || model.name}
+                              {chairman === model.name && (
+                                <span className="chair-badge" title="主席模型">
+                                  👑
+                                </span>
+                              )}
+                            </div>
+                            {model.description && (
+                              <div className="model-description">
+                                {model.description}
+                              </div>
+                            )}
+                          </div>
+                          
+                          {chairman !== model.name && (
+                            <button
+                              className="set-chairman-btn"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleSetChairman(model.name);
+                              }}
+                              title="设为主席"
+                            >
+                              设为主席
+                            </button>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       )}
 
-        <div className="model-selector-footer">
-          <span className="selected-count">
-            已选择 {selectedModels.length} / {models.length} 个模型
-          </span>
-        </div>
+      <div className="model-selector-footer">
+        <span className="selected-count">
+          已选择 {selectedModels.length} / {totalModels} 个模型
+        </span>
+        {chairman && (() => {
+          const chairmanModel = providerGroups.flatMap(g => g.models).find(m => m.name === chairman);
+          const displayText = chairmanModel
+            ? `${chairmanModel.display_name} (${chairmanModel.provider})`
+            : chairman;
+          return (
+            <span className="chairman-info">
+              主席: {displayText}
+            </span>
+          );
+        })()}
       </div>
-    </>
+    </div>
   );
 }
 
