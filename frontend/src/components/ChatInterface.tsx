@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { sendMessage, getConversation, editMessage, deleteMessage } from '../utils/api';
+import { sendMessage, getConversation, editMessage, deleteMessage, listConversationMeetings } from '../utils/api';
 import MessageDisplay from './MessageDisplay';
 import type { Message, Stage1Result, Stage2Result, Stage3Result, Stage4Result } from './MessageDisplay';
 import InputArea from './InputArea';
@@ -36,9 +36,11 @@ function ChatInterface({ convId, models, onRefreshModels, onUpdateTitle, activeM
     current_retry?: number;
     max_retries?: number;
   }>>({});
+  const [currentMeetingId, setCurrentMeetingId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const shouldAutoScrollRef = useRef<boolean>(false);
+  const currentConvIdRef = useRef<string | null>(null);
 
   // 从localStorage加载已保存的模型选择
   useEffect(() => {
@@ -70,11 +72,26 @@ function ChatInterface({ convId, models, onRefreshModels, onUpdateTitle, activeM
 
   // 加载对话历史
   useEffect(() => {
+    // 更新当前对话ID引用
+    currentConvIdRef.current = convId;
+    
     if (convId) {
       loadConversation();
     } else {
       setMessages([]);
+      setIsStreaming(false);
+      setCurrentMeetingId(null);
     }
+    
+    // 切换对话时，重置流式状态（如果不是当前对话的会议）
+    return () => {
+      // 组件卸载或convId改变时，如果有SSE连接但不是当前对话的，关闭它
+      if (eventSourceRef.current) {
+        console.log('[ChatInterface] 关闭SSE连接，对话切换');
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+    };
   }, [convId]);
 
   // 自动滚动到底部 - 只在需要时滚动
@@ -106,7 +123,7 @@ function ChatInterface({ convId, models, onRefreshModels, onUpdateTitle, activeM
       const conv = await getConversation(convId!);
       
       // 转换已保存对话中的 LaTeX 数学公式格式
-      const messages = (conv.messages || []).map((msg: any) => {
+      const loadedMessages = (conv.messages || []).map((msg: any) => {
         if (msg.role === 'assistant' && msg.stage4 && msg.stage4.best_answer) {
           let bestAnswer = msg.stage4.best_answer;
           // 将 \[ ... \] 转换为 $$ ... $$
@@ -125,12 +142,520 @@ function ChatInterface({ convId, models, onRefreshModels, onUpdateTitle, activeM
         return msg;
       });
       
-      setMessages(messages);
+      setMessages(loadedMessages);
+      
+      console.log('[ChatInterface] 对话加载完成，消息数:', loadedMessages.length);
+      
+      // 使用 setTimeout 确保 setMessages 完成后再检查会议
+      setTimeout(async () => {
+        console.log('[ChatInterface] 开始检查活跃会议...');
+        await checkAndReconnectActiveMeeting();
+      }, 0);
     } catch (err: any) {
       setError('加载对话失败: ' + err.message);
       console.error('加载对话失败:', err);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // 检查并重连活跃会议
+  const checkAndReconnectActiveMeeting = async () => {
+    if (!convId) return;
+    
+    // 检查是否仍然是当前对话（防止异步问题）
+    const checkConvId = convId;
+    
+    try {
+      console.log('[ChatInterface] 正在检查对话的活跃会议:', checkConvId);
+      const meetings = await listConversationMeetings(checkConvId);
+      console.log('[ChatInterface] 获取到会议列表:', meetings);
+      
+      // 再次检查是否仍然是当前对话
+      if (checkConvId !== currentConvIdRef.current) {
+        console.log('[ChatInterface] 对话已切换，取消重连');
+        return;
+      }
+      
+      // 查找活跃的会议（非completed/failed/cancelled状态）
+      const activeMeeting = meetings.find((m: any) =>
+        !['completed', 'failed', 'cancelled'].includes(m.status)
+      );
+      
+      if (activeMeeting) {
+        console.log('[ChatInterface] 发现活跃会议，自动重连:', activeMeeting.meeting_id);
+        
+        // 如果已经有连接，先关闭
+        if (eventSourceRef.current) {
+          console.log('[ChatInterface] 关闭旧的SSE连接');
+          eventSourceRef.current.close();
+          eventSourceRef.current = null;
+        }
+        
+        // 保存当前会议ID
+        setCurrentMeetingId(activeMeeting.meeting_id);
+        
+        // 重新连接到活跃会议
+        setIsStreaming(true);
+        reconnectToMeeting(activeMeeting.meeting_id);
+      } else {
+        console.log('[ChatInterface] 没有发现活跃会议');
+        // 确保没有活跃会议时清除状态
+        setIsStreaming(false);
+        setCurrentMeetingId(null);
+      }
+    } catch (err) {
+      console.error('[ChatInterface] 检查活跃会议失败:', err);
+    }
+  };
+
+  // 重连到会议
+  const reconnectToMeeting = (meetingId: string) => {
+    try {
+      console.log('[ChatInterface] 重连到会议:', meetingId, '对话:', convId);
+      const meetingConvId = convId; // 保存当前对话ID到闭包
+      
+      // 使用函数式更新来检查最新的消息状态
+      setMessages(prev => {
+        console.log('[ChatInterface] 当前消息数量:', prev.length);
+        
+        // 检查最后一条消息是否是streaming的助手消息
+        const lastMessage = prev[prev.length - 1];
+        const needsPlaceholder = !lastMessage ||
+                                 lastMessage.role !== 'assistant' ||
+                                 !lastMessage.streaming;
+        
+        if (needsPlaceholder) {
+          console.log('[ChatInterface] 需要创建助手消息占位符');
+          const assistantMessage: Message = {
+            role: 'assistant',
+            timestamp: new Date().toISOString(),
+            streaming: true,
+            modelStatuses: {}
+          };
+          shouldAutoScrollRef.current = true;
+          return [...prev, assistantMessage];
+        } else {
+          console.log('[ChatInterface] 已存在streaming助手消息，无需创建');
+          return prev;
+        }
+      });
+      
+      // 使用会议流API重连
+      const eventSource = new EventSource(
+        `http://localhost:8007/api/meetings/${meetingId}/stream`
+      );
+      eventSourceRef.current = eventSource;
+      
+      console.log('[ChatInterface] SSE连接已建立，会议ID:', meetingId, '对话ID:', meetingConvId);
+
+      // 用于累积流式响应 - 使用对象包装以便在闭包中共享
+      const resultsRef = {
+        stage1: [] as Stage1Result[],
+        stage2: [] as Stage2Result[],
+        stage3: undefined as Stage3Result | undefined,
+        stage4: undefined as Stage4Result | undefined
+      };
+
+      // Stage 1 事件
+      eventSource.addEventListener('stage1_start', () => {
+        // 检查对话是否仍然匹配
+        if (meetingConvId !== currentConvIdRef.current) {
+          console.log('[reconnect] 忽略stage1_start，对话已切换');
+          return;
+        }
+        console.log('[reconnect] Stage 1 开始，对话:', meetingConvId);
+        // 不更新modelStatuses，因为selectedModels可能已经改变
+      });
+
+      eventSource.addEventListener('stage1_progress', (event: MessageEvent) => {
+        try {
+          // 检查对话是否仍然匹配
+          if (meetingConvId !== currentConvIdRef.current) {
+            console.log('[reconnect] 忽略stage1_progress，对话已切换');
+            return;
+          }
+          
+          const data = JSON.parse(event.data);
+          console.log('[reconnect] Stage 1 进度:', data, '对话:', meetingConvId);
+          
+          // 检查是否是重试进度
+          if (data.status === 'retrying') {
+            setModelStatuses(prev => {
+              const newStatuses = {
+                ...prev,
+                [data.model]: {
+                  status: 'retrying',
+                  current_retry: data.current_retry,
+                  max_retries: data.max_retries
+                }
+              };
+              updateAssistantMessage({ modelStatuses: newStatuses }, meetingConvId);
+              return newStatuses;
+            });
+            return;
+          }
+          
+          const result: Stage1Result = {
+            model: data.model,
+            response: data.response || '',
+            timestamp: new Date().toISOString(),
+            error: data.error
+          };
+          
+          // 更新模型状态
+          setModelStatuses(prev => {
+            const newStatuses = {
+              ...prev,
+              [data.model]: data.error
+                ? { status: '失败', error: data.error }
+                : { status: '已完成' }
+            };
+            
+            const existingIndex = resultsRef.stage1.findIndex(r => r.model === data.model);
+            if (existingIndex >= 0) {
+              resultsRef.stage1[existingIndex] = result;
+            } else {
+              resultsRef.stage1.push(result);
+            }
+            
+            updateAssistantMessage({
+              stage1: [...resultsRef.stage1],
+              modelStatuses: newStatuses
+            }, meetingConvId);
+            
+            return newStatuses;
+          });
+        } catch (err) {
+          console.error('解析stage1_progress失败:', err);
+        }
+      });
+
+      eventSource.addEventListener('stage1_complete', (event: MessageEvent) => {
+        try {
+          // 检查对话是否仍然匹配
+          if (meetingConvId !== currentConvIdRef.current) {
+            console.log('[reconnect] 忽略stage1_complete，对话已切换');
+            return;
+          }
+          
+          const data = JSON.parse(event.data);
+          console.log('[reconnect] Stage 1 完成:', data, '对话:', meetingConvId);
+          resultsRef.stage1 = data.results || [];
+          updateAssistantMessage({ stage1: resultsRef.stage1 }, meetingConvId);
+        } catch (err) {
+          console.error('解析stage1_complete失败:', err);
+        }
+      });
+
+      // Stage 2 事件
+      eventSource.addEventListener('stage2_start', () => {
+        // 检查对话是否仍然匹配
+        if (meetingConvId !== currentConvIdRef.current) {
+          console.log('[reconnect] 忽略stage2_start，对话已切换');
+          return;
+        }
+        console.log('[reconnect] Stage 2 开始，对话:', meetingConvId);
+        // 不更新modelStatuses，因为selectedModels可能已经改变
+      });
+
+      eventSource.addEventListener('stage2_label_mapping', (event: MessageEvent) => {
+        try {
+          // 检查对话是否仍然匹配
+          if (meetingConvId !== currentConvIdRef.current) {
+            console.log('[reconnect] 忽略stage2_label_mapping，对话已切换');
+            return;
+          }
+          
+          const data = JSON.parse(event.data);
+          const labelToModel = data.label_to_model || {};
+          
+          resultsRef.stage2.forEach(result => {
+            result.label_to_model = labelToModel;
+          });
+          
+          updateAssistantMessage({ stage2: [...resultsRef.stage2] }, meetingConvId);
+        } catch (err) {
+          console.error('解析stage2_label_mapping失败:', err);
+        }
+      });
+
+      eventSource.addEventListener('stage2_progress', (event: MessageEvent) => {
+        try {
+          // 检查对话是否仍然匹配
+          if (meetingConvId !== currentConvIdRef.current) {
+            console.log('[reconnect] 忽略stage2_progress，对话已切换');
+            return;
+          }
+          
+          const data = JSON.parse(event.data);
+          console.log('[reconnect] Stage 2 进度:', data, '对话:', meetingConvId);
+          
+          const result: Stage2Result = {
+            model: data.model,
+            scores: data.scores || {},
+            raw_text: data.raw_text || '',
+            label_to_model: data.label_to_model || {},
+            timestamp: new Date().toISOString(),
+            participated: data.participated,
+            skip_reason: data.skip_reason,
+            error: data.error
+          };
+          
+          setModelStatuses(prev => {
+            const newStatuses = {
+              ...prev,
+              [`${data.model}-stage2`]: data.error
+                ? { status: '评审失败', error: data.error }
+                : { status: '评审完成' }
+            };
+            
+            const existingIndex = resultsRef.stage2.findIndex(r => r.model === data.model);
+            if (existingIndex >= 0) {
+              resultsRef.stage2[existingIndex] = result;
+            } else {
+              resultsRef.stage2.push(result);
+            }
+            
+            updateAssistantMessage({
+              stage1: resultsRef.stage1,
+              stage2: [...resultsRef.stage2],
+              modelStatuses: newStatuses
+            }, meetingConvId);
+            
+            return newStatuses;
+          });
+        } catch (err) {
+          console.error('解析stage2_progress失败:', err);
+        }
+      });
+
+      eventSource.addEventListener('stage2_complete', (event: MessageEvent) => {
+        try {
+          // 检查对话是否仍然匹配
+          if (meetingConvId !== currentConvIdRef.current) {
+            console.log('[reconnect] 忽略stage2_complete，对话已切换');
+            return;
+          }
+          
+          const data = JSON.parse(event.data);
+          console.log('[reconnect] Stage 2 完成:', data, '对话:', meetingConvId);
+          resultsRef.stage2 = data.results || [];
+          updateAssistantMessage({ stage1: resultsRef.stage1, stage2: resultsRef.stage2 }, meetingConvId);
+        } catch (err) {
+          console.error('解析stage2_complete失败:', err);
+        }
+      });
+
+      // Stage 3 事件
+      eventSource.addEventListener('stage3_start', () => {
+        // 检查对话是否仍然匹配
+        if (meetingConvId !== currentConvIdRef.current) {
+          console.log('[reconnect] 忽略stage3_start，对话已切换');
+          return;
+        }
+        console.log('[reconnect] Stage 3 开始，对话:', meetingConvId);
+      });
+
+      eventSource.addEventListener('stage3_progress', (event: MessageEvent) => {
+        try {
+          // 检查对话是否仍然匹配
+          if (meetingConvId !== currentConvIdRef.current) {
+            console.log('[reconnect] 忽略stage3_progress，对话已切换');
+            return;
+          }
+          
+          const data = JSON.parse(event.data);
+          console.log('[reconnect] Stage 3 进度:', data, '对话:', meetingConvId);
+          setModelStatuses(prev => {
+            const newStatuses = {
+              ...prev,
+              [`${data.model}-stage3`]: {
+                status: data.status === 'processing' ? '综合中...' :
+                        data.status === 'completed' ? '综合完成' : '综合失败',
+                error: data.error
+              }
+            };
+            updateAssistantMessage({ modelStatuses: newStatuses }, meetingConvId);
+            return newStatuses;
+          });
+        } catch (err) {
+          console.error('解析stage3_progress失败:', err);
+        }
+      });
+
+      eventSource.addEventListener('stage3_complete', (event: MessageEvent) => {
+        try {
+          // 检查对话是否仍然匹配
+          if (meetingConvId !== currentConvIdRef.current) {
+            console.log('[reconnect] 忽略stage3_complete，对话已切换');
+            return;
+          }
+          
+          const data = JSON.parse(event.data);
+          console.log('[reconnect] Stage 3 完成:', data, '对话:', meetingConvId);
+          resultsRef.stage3 = {
+            response: data.response,
+            timestamp: data.timestamp,
+            error: data.error
+          };
+          updateAssistantMessage({
+            stage1: resultsRef.stage1,
+            stage2: resultsRef.stage2,
+            stage3: resultsRef.stage3
+          }, meetingConvId);
+        } catch (err) {
+          console.error('解析stage3_complete失败:', err);
+        }
+      });
+
+      // Stage 4 事件
+      eventSource.addEventListener('stage4_start', () => {
+        // 检查对话是否仍然匹配
+        if (meetingConvId !== currentConvIdRef.current) {
+          console.log('[reconnect] 忽略stage4_start，对话已切换');
+          return;
+        }
+        console.log('[reconnect] Stage 4 开始，对话:', meetingConvId);
+      });
+
+      eventSource.addEventListener('stage4_progress', (event: MessageEvent) => {
+        try {
+          // 检查对话是否仍然匹配
+          if (meetingConvId !== currentConvIdRef.current) {
+            console.log('[reconnect] 忽略stage4_progress，对话已切换');
+            return;
+          }
+          
+          const data = JSON.parse(event.data);
+          console.log('[reconnect] Stage 4 进度:', data, '对话:', meetingConvId);
+          setModelStatuses(prev => {
+            const newStatuses = {
+              ...prev,
+              'stage4': {
+                status: data.status === 'processing' ? '计算排名中...' :
+                        data.status === 'completed' ? '排名完成' : '排名失败',
+                error: data.error
+              }
+            };
+            updateAssistantMessage({ modelStatuses: newStatuses }, meetingConvId);
+            return newStatuses;
+          });
+        } catch (err) {
+          console.error('解析stage4_progress失败:', err);
+        }
+      });
+
+      eventSource.addEventListener('stage4_complete', (event: MessageEvent) => {
+        try {
+          // 检查对话是否仍然匹配
+          if (meetingConvId !== currentConvIdRef.current) {
+            console.log('[reconnect] 忽略stage4_complete，对话已切换');
+            return;
+          }
+          
+          const data = JSON.parse(event.data);
+          console.log('[reconnect] Stage 4 完成:', data, '对话:', meetingConvId);
+          
+          let bestAnswer = data.best_answer || '';
+          bestAnswer = bestAnswer.replace(/\\\[([\s\S]*?)\\\]/g, '$$$$1$$');
+          bestAnswer = bestAnswer.replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$');
+          
+          resultsRef.stage4 = {
+            rankings: data.rankings || [],
+            best_answer: bestAnswer,
+            timestamp: data.timestamp,
+            error: data.error
+          };
+          updateAssistantMessage({
+            stage1: resultsRef.stage1,
+            stage2: resultsRef.stage2,
+            stage3: resultsRef.stage3,
+            stage4: resultsRef.stage4
+          }, meetingConvId);
+        } catch (err) {
+          console.error('解析stage4_complete失败:', err);
+        }
+      });
+
+      eventSource.addEventListener('complete', (event: MessageEvent) => {
+        try {
+          // 检查对话是否仍然匹配
+          if (meetingConvId !== currentConvIdRef.current) {
+            console.log('[reconnect] 忽略complete，对话已切换');
+            return;
+          }
+          
+          const data = JSON.parse(event.data);
+          console.log('[reconnect] 会议完成:', data, '对话:', meetingConvId);
+          setIsStreaming(false);
+          setCurrentMeetingId(null);
+          eventSource.close();
+          eventSourceRef.current = null;
+          
+          // 移除 streaming 标记
+          setMessages(prev => prev.map(msg => {
+            if (msg.streaming) {
+              const { streaming, ...rest } = msg;
+              return rest;
+            }
+            return msg;
+          }));
+          
+          // 更新对话标题（如果有）
+          if (data.title && onUpdateTitle && convId) {
+            onUpdateTitle(convId, data.title);
+          }
+        } catch (err) {
+          console.error('解析complete失败:', err);
+        }
+      });
+
+      eventSource.addEventListener('error', (event: any) => {
+        try {
+          // 检查对话是否仍然匹配
+          if (meetingConvId !== currentConvIdRef.current) {
+            console.log('[reconnect] 忽略error，对话已切换');
+            return;
+          }
+          
+          const data = JSON.parse(event.data);
+          console.error('[reconnect] 会议错误:', data, '对话:', meetingConvId);
+          setError(data.error || '会议执行失败');
+          setIsStreaming(false);
+          setCurrentMeetingId(null);
+          eventSource.close();
+          eventSourceRef.current = null;
+        } catch (err) {
+          console.error('解析error失败:', err);
+        }
+      });
+
+      eventSource.addEventListener('heartbeat', () => {
+        // 心跳不需要检查对话ID
+        console.log('[reconnect] 收到心跳');
+      });
+
+      eventSource.onerror = (err) => {
+        // 检查对话是否仍然匹配
+        if (meetingConvId !== currentConvIdRef.current) {
+          console.log('[reconnect] 忽略onerror，对话已切换');
+          eventSource.close();
+          return;
+        }
+        
+        console.error('[reconnect] SSE 连接错误:', err, '对话:', meetingConvId);
+        setError('连接失败，请重试');
+        setIsStreaming(false);
+        setCurrentMeetingId(null);
+        eventSource.close();
+        eventSourceRef.current = null;
+      };
+    } catch (err: any) {
+      setError('重连会议失败: ' + err.message);
+      setIsStreaming(false);
+      setCurrentMeetingId(null);
+      console.error('重连会议失败:', err);
     }
   };
 
@@ -145,6 +670,8 @@ function ChatInterface({ convId, models, onRefreshModels, onUpdateTitle, activeM
       setError('请至少选择一个模型');
       return;
     }
+    
+    const messageConvId = convId; // 保存当前对话ID到闭包
 
     // 添加用户消息到界面
     const userMessage: Message = {
@@ -196,6 +723,17 @@ function ChatInterface({ convId, models, onRefreshModels, onUpdateTitle, activeM
       let stage3Result: Stage3Result | undefined = undefined;
       let stage4Result: Stage4Result | undefined = undefined;
 
+      // 监听会议创建事件，保存会议ID
+      eventSource.addEventListener('meeting_created', (event: MessageEvent) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('[ChatInterface] 会议已创建:', data.meeting_id);
+          setCurrentMeetingId(data.meeting_id);
+        } catch (err) {
+          console.error('解析 meeting_created 失败:', err);
+        }
+      });
+
       eventSource.addEventListener('stage1_progress', (event: MessageEvent) => {
         try {
           const data = JSON.parse(event.data);
@@ -215,7 +753,7 @@ function ChatInterface({ convId, models, onRefreshModels, onUpdateTitle, activeM
               // 更新助手消息的模型状态
               updateAssistantMessage({
                 modelStatuses: newStatuses
-              });
+              }, messageConvId);
               
               return newStatuses;
             });
@@ -251,7 +789,7 @@ function ChatInterface({ convId, models, onRefreshModels, onUpdateTitle, activeM
             updateAssistantMessage({
               stage1: [...stage1Results],
               modelStatuses: newStatuses
-            });
+            }, messageConvId);
             
             return newStatuses;
           });
@@ -269,7 +807,7 @@ function ChatInterface({ convId, models, onRefreshModels, onUpdateTitle, activeM
             timestamp: r.timestamp,
             error: r.error
           }));
-          updateAssistantMessage({ stage1: stage1Results });
+          updateAssistantMessage({ stage1: stage1Results }, messageConvId);
         } catch (err) {
           console.error('解析 stage1_complete 失败:', err);
         }
@@ -299,7 +837,7 @@ function ChatInterface({ convId, models, onRefreshModels, onUpdateTitle, activeM
           // 同步更新助手消息的modelStatuses
           updateAssistantMessage({
             modelStatuses: updated
-          });
+          }, messageConvId);
           
           return updated;
         });
@@ -319,7 +857,7 @@ function ChatInterface({ convId, models, onRefreshModels, onUpdateTitle, activeM
           // 更新助手消息，让前端立即知道标签映射
           updateAssistantMessage({
             stage2: [...stage2Results]
-          });
+          }, messageConvId);
         } catch (err) {
           console.error('解析 stage2_label_mapping 失败:', err);
         }
@@ -361,7 +899,7 @@ function ChatInterface({ convId, models, onRefreshModels, onUpdateTitle, activeM
               stage1: stage1Results,
               stage2: [...stage2Results],
               modelStatuses: newStatuses
-            });
+            }, messageConvId);
             
             return newStatuses;
           });
@@ -380,7 +918,7 @@ function ChatInterface({ convId, models, onRefreshModels, onUpdateTitle, activeM
             timestamp: r.timestamp,
             error: r.error
           }));
-          updateAssistantMessage({ stage1: stage1Results, stage2: stage2Results });
+          updateAssistantMessage({ stage1: stage1Results, stage2: stage2Results }, messageConvId);
         } catch (err) {
           console.error('解析 stage2_complete 失败:', err);
         }
@@ -407,7 +945,7 @@ function ChatInterface({ convId, models, onRefreshModels, onUpdateTitle, activeM
             // 同步更新助手消息
             updateAssistantMessage({
               modelStatuses: newStatuses
-            });
+            }, messageConvId);
             
             return newStatuses;
           });
@@ -429,7 +967,7 @@ function ChatInterface({ convId, models, onRefreshModels, onUpdateTitle, activeM
             stage1: stage1Results,
             stage2: stage2Results,
             stage3: stage3Result
-          });
+          }, messageConvId);
         } catch (err) {
           console.error('解析 stage3_complete 失败:', err);
         }
@@ -456,7 +994,7 @@ function ChatInterface({ convId, models, onRefreshModels, onUpdateTitle, activeM
             // 同步更新助手消息
             updateAssistantMessage({
               modelStatuses: newStatuses
-            });
+            }, messageConvId);
             
             return newStatuses;
           });
@@ -486,7 +1024,7 @@ function ChatInterface({ convId, models, onRefreshModels, onUpdateTitle, activeM
             stage2: stage2Results,
             stage3: stage3Result,
             stage4: stage4Result
-          });
+          }, messageConvId);
         } catch (err) {
           console.error('解析 stage4_complete 失败:', err);
         }
@@ -561,41 +1099,61 @@ function ChatInterface({ convId, models, onRefreshModels, onUpdateTitle, activeM
     }
   };
 
-  // 更新助手消息
-  const updateAssistantMessage = (updates: Partial<Message>) => {
+  // 更新助手消息 - 只更新有streaming标记的助手消息，并检查对话ID
+  const updateAssistantMessage = (updates: Partial<Message>, meetingConvId?: string | null) => {
+    // 如果提供了会议对话ID，检查是否匹配当前对话
+    if (meetingConvId && meetingConvId !== currentConvIdRef.current) {
+      console.log('[ChatInterface] 忽略其他对话的更新:', meetingConvId, '当前对话:', currentConvIdRef.current);
+      return;
+    }
+    
     setMessages(prev => {
       const newMessages = [...prev];
-      const lastIndex = newMessages.length - 1;
-      if (lastIndex >= 0 && newMessages[lastIndex].role === 'assistant') {
-        newMessages[lastIndex] = {
-          ...newMessages[lastIndex],
-          ...updates,
-          // 保持模型状态更新
-          modelStatuses: updates.modelStatuses || newMessages[lastIndex].modelStatuses
-        };
+      // 从后往前查找第一个streaming的助手消息
+      for (let i = newMessages.length - 1; i >= 0; i--) {
+        if (newMessages[i].role === 'assistant' && newMessages[i].streaming) {
+          newMessages[i] = {
+            ...newMessages[i],
+            ...updates,
+            // 保持模型状态更新
+            modelStatuses: updates.modelStatuses || newMessages[i].modelStatuses
+          };
+          break; // 只更新第一个找到的streaming消息
+        }
       }
       return newMessages;
     });
   };
 
-  // 停止流式响应
-  const handleStopStreaming = () => {
+  // 停止流式响应 - 取消当前对话的会议
+  const handleStopStreaming = async () => {
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
       eventSourceRef.current = null;
-      setIsStreaming(false);
-      // 不清空模型状态,保留已完成的进度
-      
-      // 移除 streaming 标记但保留modelStatuses和已完成的阶段数据
-      setMessages(prev => prev.map(msg => {
-        if (msg.streaming) {
-          const { streaming, ...rest } = msg;
-          // 保留已有的stage数据和modelStatuses
-          return rest;
-        }
-        return msg;
-      }));
     }
+    
+    // 如果有会议ID，调用取消会议API
+    if (currentMeetingId) {
+      try {
+        const { cancelMeeting } = await import('../utils/api');
+        await cancelMeeting(currentMeetingId);
+        console.log('会议已取消:', currentMeetingId);
+      } catch (err) {
+        console.error('取消会议失败:', err);
+      }
+      setCurrentMeetingId(null);
+    }
+    
+    setIsStreaming(false);
+    
+    // 移除 streaming 标记但保留modelStatuses和已完成的阶段数据
+    setMessages(prev => prev.map(msg => {
+      if (msg.streaming) {
+        const { streaming, ...rest } = msg;
+        return rest;
+      }
+      return msg;
+    }));
   };
 
   // 处理编辑消息
@@ -658,6 +1216,17 @@ function ChatInterface({ convId, models, onRefreshModels, onUpdateTitle, activeM
         let stage2Results: Stage2Result[] = [];
         let stage3Result: Stage3Result | undefined = undefined;
         let stage4Result: Stage4Result | undefined = undefined;
+
+        // 监听会议创建事件，保存会议ID
+        eventSource.addEventListener('meeting_created', (event: MessageEvent) => {
+          try {
+            const data = JSON.parse(event.data);
+            console.log('[ChatInterface] 会议已创建(编辑):', data.meeting_id);
+            setCurrentMeetingId(data.meeting_id);
+          } catch (err) {
+            console.error('解析 meeting_created 失败:', err);
+          }
+        });
 
         eventSource.addEventListener('stage1_progress', (event: MessageEvent) => {
           try {
