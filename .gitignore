@@ -41,6 +41,8 @@ yarn-error.log*
 
 # Project specific
 backend/config.json
+测试文件
+backend/backend/file_metadata.json
 backend/data/conversations/*.json
 !backend/data/conversations/.gitkeep
 backend/backend/uploads/*
