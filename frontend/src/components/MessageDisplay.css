@@ -873,6 +873,11 @@
   background: var(--bg-primary);
   border-radius: 6px;
   border-left: 3px solid var(--primary-color);
+  white-space: pre-wrap; /* 保留换行符和空格 */
+  word-wrap: break-word; /* 长单词换行 */
+  word-break: break-word; /* 强制长单词换行 */
+  overflow-wrap: break-word; /* 确保内容不会溢出 */
+  line-height: 1.6;
 }
 
 /* 收到的评分样式 */

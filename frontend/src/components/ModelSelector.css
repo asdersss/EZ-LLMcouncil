@@ -28,7 +28,7 @@
   align-items: center;
 }
 
-.config-btn {
+.select-all-btn {
   padding: var(--spacing-xs) var(--spacing-md);
   font-size: var(--font-size-sm);
   background-color: var(--primary-color);
@@ -39,14 +39,8 @@
   transition: all 0.2s ease;
 }
 
-.config-btn:hover {
+.select-all-btn:hover {
   background-color: var(--primary-hover-color, #2563eb);
-  transform: translateY(-1px);
-}
-
-.select-all-btn {
-  padding: var(--spacing-xs) var(--spacing-md);
-  font-size: var(--font-size-sm);
 }
 
 .model-selector-error {
@@ -67,6 +61,8 @@
   background-color: white;
   color: var(--error-color);
   border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
 }
 
 .retry-btn:hover {
@@ -87,7 +83,6 @@
   flex: 1;
   overflow-y: auto;
   padding: var(--spacing-sm);
-  max-height: 400px;
 }
 
 .empty-state {
@@ -101,16 +96,110 @@
   font-size: var(--font-size-sm);
 }
 
+/* 供应商分组 */
+.provider-group {
+  margin-bottom: var(--spacing-sm);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background-color: var(--background-color);
+}
+
+.provider-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background-color: var(--surface-color);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.provider-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: var(--font-size-md);
+  font-weight: 500;
+  color: var(--text-color);
+  padding: 0;
+  flex: 1;
+  text-align: left;
+}
+
+.provider-toggle:hover {
+  color: var(--primary-color);
+}
+
+.toggle-icon {
+  display: inline-block;
+  transition: transform 0.2s ease;
+  font-size: 12px;
+}
+
+.toggle-icon.expanded {
+  transform: rotate(90deg);
+}
+
+.provider-name {
+  font-weight: 600;
+}
+
+.provider-count {
+  color: var(--secondary-color);
+  font-size: var(--font-size-sm);
+  font-weight: normal;
+}
+
+.provider-select-all {
+  width: 28px;
+  height: 28px;
+  border: 2px solid var(--border-color);
+  border-radius: 50%;
+  background: white;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.provider-select-all:hover {
+  border-color: var(--primary-color);
+  background-color: var(--surface-color);
+}
+
+.provider-select-all.all-selected {
+  background-color: var(--primary-color);
+  border-color: var(--primary-color);
+  color: white;
+}
+
+.provider-select-all.some-selected {
+  background-color: var(--surface-color);
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+/* 供应商下的模型列表 */
+.provider-models {
+  padding: var(--spacing-xs);
+}
+
 .model-item {
   display: flex;
   align-items: center;
   gap: var(--spacing-md);
   padding: var(--spacing-md);
-  margin-bottom: var(--spacing-sm);
+  margin-bottom: var(--spacing-xs);
   border-radius: var(--radius-md);
   cursor: pointer;
   transition: all 0.2s ease;
-  background-color: var(--background-color);
+  background-color: white;
   border: 1px solid var(--border-color);
 }
 
@@ -173,11 +262,40 @@
   text-overflow: ellipsis;
 }
 
+.set-chairman-btn {
+  padding: 4px 12px;
+  font-size: var(--font-size-sm);
+  background-color: white;
+  color: var(--primary-color);
+  border: 1px solid var(--primary-color);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.set-chairman-btn:hover {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.model-item.selected .set-chairman-btn {
+  background-color: white;
+  color: var(--primary-color);
+  border-color: white;
+}
+
+.model-item.selected .set-chairman-btn:hover {
+  background-color: rgba(255, 255, 255, 0.9);
+}
+
 .model-selector-footer {
   padding: var(--spacing-md) var(--spacing-lg);
   border-top: 1px solid var(--border-color);
   background-color: var(--background-color);
-  text-align: center;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .selected-count {
@@ -186,46 +304,24 @@
   font-weight: 500;
 }
 
-/* 模型配置弹窗 */
-.model-config-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
+.chairman-info {
+  font-size: var(--font-size-sm);
+  color: var(--primary-color);
+  font-weight: 500;
   display: flex;
   align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  padding: 20px;
+  gap: var(--spacing-xs);
 }
 
-.model-config-popup {
-  width: 90%;
-  max-width: 900px;
-  max-height: 90vh;
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
+.chairman-info::before {
+  content: '👑';
+  font-size: 14px;
 }
 
 /* 响应式设计 */
 @media (max-width: 768px) {
-  .model-list {
-    max-height: 300px;
-  }
-
   .model-description {
     display: none;
-  }
-  
-  .model-config-popup {
-    width: 95%;
-    max-height: 95vh;
   }
   
   .header-actions {
@@ -233,8 +329,18 @@
     gap: var(--spacing-xs);
   }
   
-  .config-btn,
   .select-all-btn {
     width: 100%;
+  }
+  
+  .model-selector-footer {
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    align-items: flex-start;
+  }
+  
+  .set-chairman-btn {
+    font-size: 11px;
+    padding: 2px 8px;
   }
 }

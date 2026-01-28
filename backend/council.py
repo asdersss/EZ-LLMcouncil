@@ -560,154 +560,226 @@ async def collect_scores_with_progress(
     # 创建信号量控制并发
     semaphore = asyncio.Semaphore(max_concurrent)
     
-    # 为每个模型构建打分任务（只为 Stage 1 成功的模型）
-    async def score_with_model(model_name: str):
-        """单个模型的打分任务"""
-        async with semaphore:
-            # 检查该模型是否在 Stage 1 中成功
-            if model_name not in successful_models:
-                logger.info(f"模型 {model_name} 在 Stage 1 中失败，跳过打分")
-                return {
-                    "model": model_name,
-                    "scores": {},
-                    "raw_text": "",
-                    "timestamp": datetime.utcnow().isoformat() + "Z",
-                    "participated": False,
-                    "skip_reason": "该模型在 Stage 1 中执行失败",
-                    "error": None
+    # 创建共享的HTTP客户端以提高并发性能
+    import httpx
+    async with httpx.AsyncClient(timeout=timeout) as shared_client:
+        # 为每个模型构建打分任务（只为 Stage 1 成功的模型）
+        async def score_with_model(model_name: str):
+            """单个模型的打分任务"""
+            async with semaphore:
+                # 检查该模型是否在 Stage 1 中成功
+                if model_name not in successful_models:
+                    logger.info(f"模型 {model_name} 在 Stage 1 中失败，跳过打分")
+                    return {
+                        "model": model_name,
+                        "scores": {},
+                        "raw_text": "",
+                        "timestamp": datetime.utcnow().isoformat() + "Z",
+                        "participated": False,
+                        "skip_reason": "该模型在 Stage 1 中执行失败",
+                        "error": None
+                    }
+                
+                # 找到该模型对应的标签
+                reviewer_label = None
+                for label, m in label_to_model.items():
+                    if m == model_name:
+                        reviewer_label = label
+                        break
+                
+                # 构建打分提示词
+                prompt_parts = []
+                
+                prompt_parts.append("你是一个公正的评审专家。请对以下回答进行打分(满分10分)。")
+                prompt_parts.append(f"\n用户问题: {query}")
+                
+                # 添加历史对话上下文
+                if context:
+                    prompt_parts.append(f"\n历史对话:\n{context}")
+                
+                prompt_parts.append("\n候选回答:")
+                prompt_parts.append("\n\n".join(anonymized_responses))
+                
+                prompt_parts.append("\n请根据以下标准对每个回答打分(满分10分):")
+                prompt_parts.append("1. 准确性 (是否正确回答问题)")
+                prompt_parts.append("2. 完整性 (是否全面覆盖问题要点)")
+                prompt_parts.append("3. 清晰度 (表达是否清晰易懂)")
+                prompt_parts.append("4. 实用性 (是否有实际应用价值)")
+                
+                prompt_parts.append("\n【重要】请严格按照以下格式输出评价：")
+                prompt_parts.append("```")
+                prompt_parts.append("#1: 8.5分 - 回答准确且详细，逻辑清晰，但可以更简洁。")
+                prompt_parts.append("#2: 9.0分 - 非常全面的回答，覆盖了所有要点，表达清晰。")
+                prompt_parts.append("#3: 7.5分 - 回答基本正确，但缺少一些细节。")
+                prompt_parts.append("```")
+                prompt_parts.append("\n格式说明：")
+                prompt_parts.append("- 每个评价独占一行")
+                prompt_parts.append("- 格式：#编号: 分数 - 评价内容")
+                prompt_parts.append("- 分数后必须加空格和短横线(-)，然后是评价")
+                prompt_parts.append("- 评价要简短明确，一句话说明优缺点")
+                
+                if reviewer_label:
+                    prompt_parts.append(f"\n注意: 请不要对 [{reviewer_label}] 打分(这是你自己的回答)，跳过该编号。")
+                
+                prompt_parts.append("\n请现在开始评分：")
+                
+                prompt = "\n".join(prompt_parts)
+                
+                # 构建消息列表
+                messages = [{"role": "user", "content": prompt}]
+                
+                # 获取模型配置
+                model_config = model_configs.get(model_name)
+                if not model_config:
+                    logger.warning(f"模型 {model_name} 配置不存在")
+                    return {
+                        "model": model_name,
+                        "scores": {},
+                        "raw_text": "",
+                        "timestamp": datetime.utcnow().isoformat() + "Z",
+                        "error": "模型配置不存在"
+                    }
+                
+                # 提取模型配置信息
+                url = model_config.get("url")
+                api_key = model_config.get("api_key")
+                api_type = model_config.get("api_type", "openai")
+                
+                if not url or not api_key:
+                    error_msg = f"模型 {model_name} 配置不完整"
+                    logger.error(error_msg)
+                    return {
+                        "model": model_name,
+                        "scores": {},
+                        "raw_text": "",
+                        "timestamp": datetime.utcnow().isoformat() + "Z",
+                        "error": error_msg
+                    }
+                
+                # 提取实际的模型名称（去掉供应商后缀）
+                if '/' in model_name:
+                    parts = model_name.rsplit('/', 1)
+                    actual_model_name = parts[0]
+                else:
+                    actual_model_name = model_name
+                
+                # 构建请求体
+                request_body = {
+                    "model": actual_model_name,
+                    "messages": messages,
+                    "temperature": temperature
                 }
-            
-            # 找到该模型对应的标签
-            reviewer_label = None
-            for label, m in label_to_model.items():
-                if m == model_name:
-                    reviewer_label = label
-                    break
-            
-            # 构建打分提示词
-            prompt_parts = []
-            
-            prompt_parts.append("你是一个公正的评审专家。请对以下回答进行打分(满分10分)。")
-            prompt_parts.append(f"\n用户问题: {query}")
-            
-            # 添加历史对话上下文
-            if context:
-                prompt_parts.append(f"\n历史对话:\n{context}")
-            
-            prompt_parts.append("\n候选回答:")
-            prompt_parts.append("\n\n".join(anonymized_responses))
-            
-            prompt_parts.append("\n请根据以下标准对每个回答打分(满分10分):")
-            prompt_parts.append("1. 准确性 (是否正确回答问题)")
-            prompt_parts.append("2. 完整性 (是否全面覆盖问题要点)")
-            prompt_parts.append("3. 清晰度 (表达是否清晰易懂)")
-            prompt_parts.append("4. 实用性 (是否有实际应用价值)")
-            
-            prompt_parts.append("\n【重要】请严格按照以下格式输出评价：")
-            prompt_parts.append("```")
-            prompt_parts.append("#1: 8.5分 - 回答准确且详细，逻辑清晰，但可以更简洁。")
-            prompt_parts.append("#2: 9.0分 - 非常全面的回答，覆盖了所有要点，表达清晰。")
-            prompt_parts.append("#3: 7.5分 - 回答基本正确，但缺少一些细节。")
-            prompt_parts.append("```")
-            prompt_parts.append("\n格式说明：")
-            prompt_parts.append("- 每个评价独占一行")
-            prompt_parts.append("- 格式：#编号: 分数 - 评价内容")
-            prompt_parts.append("- 分数后必须加空格和短横线(-)，然后是评价")
-            prompt_parts.append("- 评价要简短明确，一句话说明优缺点")
-            
-            if reviewer_label:
-                prompt_parts.append(f"\n注意: 请不要对 [{reviewer_label}] 打分(这是你自己的回答)，跳过该编号。")
-            
-            prompt_parts.append("\n请现在开始评分：")
-            
-            prompt = "\n".join(prompt_parts)
-            
-            # 构建消息列表
-            messages = [{"role": "user", "content": prompt}]
-            
-            # 获取模型配置
-            model_config = model_configs.get(model_name)
-            if not model_config:
-                logger.warning(f"模型 {model_name} 配置不存在")
-                return {
-                    "model": model_name,
-                    "scores": {},
-                    "raw_text": "",
-                    "timestamp": datetime.utcnow().isoformat() + "Z",
-                    "error": "模型配置不存在"
-                }
-            
-            # 查询模型
-            result = await query_model(
-                model_config,
-                messages,
-                temperature=temperature,
-                timeout=timeout,
-                max_retries=max_retries
-            )
-            
-            # 如果查询失败，返回错误结果
-            if result.get("error"):
+                
+                # 根据 API 类型设置请求头
+                if api_type == "anthropic":
+                    headers = {
+                        "Content-Type": "application/json",
+                        "x-api-key": api_key,
+                        "anthropic-version": "2023-06-01"
+                    }
+                    if "max_tokens" not in request_body:
+                        request_body["max_tokens"] = 4096
+                else:
+                    headers = {
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {api_key}"
+                    }
+                
+                # 重试逻辑
+                last_error = None
+                for attempt in range(max_retries):
+                    try:
+                        logger.info(f"查询模型 {model_name} (尝试 {attempt + 1}/{max_retries})")
+                        
+                        response = await shared_client.post(
+                            url,
+                            json=request_body,
+                            headers=headers
+                        )
+                        
+                        response.raise_for_status()
+                        data = response.json()
+                        
+                        # 根据 API 类型提取响应内容
+                        content = ""
+                        if api_type == "anthropic":
+                            if "content" in data and len(data["content"]) > 0:
+                                content = data["content"][0].get("text", "")
+                        else:
+                            if "choices" in data and len(data["choices"]) > 0:
+                                choice = data["choices"][0]
+                                if "message" in choice:
+                                    content = choice["message"].get("content", "")
+                                elif "text" in choice:
+                                    content = choice.get("text", "")
+                        
+                        logger.info(f"模型 {model_name} 响应成功")
+                        
+                        # 解析打分
+                        scores = parse_scores(content, labels, reviewer_label)
+                        
+                        actual_score_count = len(scores)
+                        expected_score_count = len(successful_models) - 1
+                        
+                        logger.info(
+                            f"模型 {model_name} 打分完成: "
+                            f"解析到 {actual_score_count} 个评分（期望 {expected_score_count} 个）"
+                        )
+                        
+                        return {
+                            "model": model_name,
+                            "scores": scores,
+                            "raw_text": content,
+                            "label_to_model": label_to_model,
+                            "timestamp": datetime.utcnow().isoformat() + "Z",
+                            "participated": True,
+                            "expected_count": expected_score_count,
+                            "actual_count": actual_score_count,
+                            "error": None
+                        }
+                        
+                    except Exception as e:
+                        last_error = str(e)
+                        logger.warning(f"模型 {model_name} 查询失败 (尝试 {attempt + 1}/{max_retries}): {last_error}")
+                        
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(1 * (2 ** attempt))
+                
+                # 所有重试都失败
+                error_msg = f"查询失败,已重试 {max_retries} 次: {last_error}"
+                logger.error(f"模型 {model_name} {error_msg}")
                 return {
                     "model": model_name,
                     "scores": {},
                     "raw_text": "",
                     "label_to_model": label_to_model,
-                    "timestamp": result.get("timestamp", datetime.utcnow().isoformat() + "Z"),
-                    "participated": False,
-                    "skip_reason": f"查询失败: {result.get('error')}",
-                    "error": result.get("error")
-                }
-            
-            # 解析打分
-            score_text = result.get("response", "")
-            scores = parse_scores(score_text, labels, reviewer_label)
-            
-            # Stage 2 不再验证打分数量，只记录解析结果
-            # 验证工作推迟到 Stage 4 统一处理
-            actual_score_count = len(scores)
-            expected_score_count = len(successful_models) - 1
-            
-            logger.info(
-                f"模型 {model_name} 打分完成: "
-                f"解析到 {actual_score_count} 个评分（期望 {expected_score_count} 个）"
-            )
-            
-            # 返回打分结果，不管数量是否正确
-            # participated 表示是否成功完成打分查询（不表示打分是否有效）
-            return {
-                "model": model_name,
-                "scores": scores,
-                "raw_text": score_text,
-                "label_to_model": label_to_model,
-                "timestamp": result.get("timestamp", datetime.utcnow().isoformat() + "Z"),
-                "participated": True,  # 查询成功就算参与
-                "expected_count": expected_score_count,  # 记录期望数量，供 Stage 4 验证
-                "actual_count": actual_score_count,  # 记录实际数量
-                "error": None
-            }
-    
-    # 并行执行所有打分任务,并实时yield结果
-    # 只为 Stage 1 成功的模型创建打分任务
-    tasks = [asyncio.create_task(score_with_model(model_name)) for model_name in successful_models]
-    
-    # 使用 asyncio.as_completed 来实时获取完成的任务
-    for task in asyncio.as_completed(tasks):
-        try:
-            result = await task
-            yield result
-        except Exception as e:
-            logger.error(f"打分任务异常: {str(e)}")
-            # 找出是哪个模型的任务失败了
-            for model_name in models:
-                yield {
-                    "model": model_name,
-                    "scores": {},
-                    "raw_text": "",
                     "timestamp": datetime.utcnow().isoformat() + "Z",
-                    "error": f"打分异常: {str(e)}"
+                    "participated": False,
+                    "skip_reason": error_msg,
+                    "error": error_msg
                 }
-                break
+        
+        # 并行执行所有打分任务,并实时yield结果
+        # 只为 Stage 1 成功的模型创建打分任务
+        tasks = [asyncio.create_task(score_with_model(model_name)) for model_name in successful_models]
+        
+        # 使用 asyncio.as_completed 来实时获取完成的任务
+        for task in asyncio.as_completed(tasks):
+            try:
+                result = await task
+                yield result
+            except Exception as e:
+                logger.error(f"打分任务异常: {str(e)}")
+                # 找出是哪个模型的任务失败了
+                for model_name in models:
+                    yield {
+                        "model": model_name,
+                        "scores": {},
+                        "raw_text": "",
+                        "timestamp": datetime.utcnow().isoformat() + "Z",
+                        "error": f"打分异常: {str(e)}"
+                    }
+                    break
     
     logger.info(f"Stage 2: 完成")
 

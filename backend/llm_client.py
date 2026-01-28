@@ -32,7 +32,7 @@ async def query_model(
     查询单个 LLM 模型
     
     Args:
-        model_config: 模型配置,包含 name, url, api_key 等
+        model_config: 模型配置,包含 name, url, api_key, api_type 等
         messages: 消息列表,格式为 [{"role": "user", "content": "..."}]
         temperature: 温度参数,控制随机性
         max_tokens: 最大生成 token 数
@@ -51,6 +51,7 @@ async def query_model(
     model_name = model_config.get("name", "unknown")
     url = model_config.get("url")
     api_key = model_config.get("api_key")
+    api_type = model_config.get("api_type", "openai")  # 默认为 openai
     
     if not url or not api_key:
         error_msg = f"模型 {model_name} 配置不完整"
@@ -62,10 +63,20 @@ async def query_model(
             "error": error_msg
         }
     
+    # 提取实际的模型名称（去掉供应商后缀）
+    # 模型名称格式为 "model_name/provider"，需要去掉最后的 "/provider"
+    # 注意：model_name 本身可能包含 '/'，如 "Qwen/Qwen3-VL-30B/provider"
+    # 所以我们需要去掉最后一个 '/' 及其后面的内容
+    if '/' in model_name:
+        # 找到最后一个 '/' 的位置，去掉供应商部分
+        parts = model_name.rsplit('/', 1)  # 从右边分割，只分割一次
+        actual_model_name = parts[0]  # 取前面的部分作为实际模型名
+    else:
+        actual_model_name = model_name
+    
     # 构建请求体
-    # 直接使用 name 作为 API 模型名称
     request_body = {
-        "model": model_name,
+        "model": actual_model_name,
         "messages": messages,
         "temperature": temperature
     }
@@ -73,11 +84,18 @@ async def query_model(
     if max_tokens:
         request_body["max_tokens"] = max_tokens
     
-    # 请求头
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {api_key}"
-    }
+    # 根据 API 类型设置请求头
+    if api_type == "anthropic":
+        headers = {
+            "Content-Type": "application/json",
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01"
+        }
+    else:  # openai 或其他兼容 OpenAI 的 API
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}"
+        }
     
     # 重试逻辑
     last_error = None
@@ -95,14 +113,20 @@ async def query_model(
                 response.raise_for_status()
                 data = response.json()
                 
-                # 提取响应内容
+                # 根据 API 类型提取响应内容
                 content = ""
-                if "choices" in data and len(data["choices"]) > 0:
-                    choice = data["choices"][0]
-                    if "message" in choice:
-                        content = choice["message"].get("content", "")
-                    elif "text" in choice:
-                        content = choice.get("text", "")
+                if api_type == "anthropic":
+                    # Anthropic API 响应格式
+                    if "content" in data and len(data["content"]) > 0:
+                        content = data["content"][0].get("text", "")
+                else:
+                    # OpenAI API 响应格式
+                    if "choices" in data and len(data["choices"]) > 0:
+                        choice = data["choices"][0]
+                        if "message" in choice:
+                            content = choice["message"].get("content", "")
+                        elif "text" in choice:
+                            content = choice.get("text", "")
                 
                 logger.info(f"模型 {model_name} 响应成功")
                 return {

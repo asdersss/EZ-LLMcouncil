@@ -9,6 +9,7 @@ interface ModelConfig {
   name: string;
   url: string;
   api_key: string;
+  api_type?: 'openai' | 'anthropic';
   api_model_name?: string;
   display_name: string;
   description: string;
@@ -38,6 +39,7 @@ function ModelConfig({ onClose, onSave }: ModelConfigProps) {
     name: '',
     url: '',
     api_key: '',
+    api_type: 'openai',
     api_model_name: '',
     display_name: '',
     description: ''
@@ -112,6 +114,7 @@ function ModelConfig({ onClose, onSave }: ModelConfigProps) {
       name: '',
       url: '',
       api_key: '',
+      api_type: 'openai',
       api_model_name: '',
       display_name: '',
       description: ''
@@ -126,6 +129,7 @@ function ModelConfig({ onClose, onSave }: ModelConfigProps) {
       name: '',
       url: '',
       api_key: '',
+      api_type: 'openai',
       api_model_name: '',
       display_name: '',
       description: ''
@@ -206,12 +210,24 @@ function ModelConfig({ onClose, onSave }: ModelConfigProps) {
                 </div>
                 <div className="form-row">
                   <label>
+                    API 类型 <span className="required">*</span>
+                    <select
+                      value={newModel.api_type || 'openai'}
+                      onChange={(e) => setNewModel({ ...newModel, api_type: e.target.value as 'openai' | 'anthropic' })}
+                    >
+                      <option value="openai">OpenAI</option>
+                      <option value="anthropic">Anthropic</option>
+                    </select>
+                  </label>
+                </div>
+                <div className="form-row">
+                  <label>
                     API URL <span className="required">*</span>
                     <input
                       type="text"
                       value={newModel.url}
                       onChange={(e) => setNewModel({ ...newModel, url: e.target.value })}
-                      placeholder="例如: https://api.openai.com/v1/chat/completions"
+                      placeholder={newModel.api_type === 'anthropic' ? '例如: https://api.anthropic.com/v1/messages' : '例如: https://api.openai.com/v1/chat/completions'}
                     />
                   </label>
                 </div>
@@ -400,6 +416,18 @@ function ModelConfigItem({
           </div>
           <div className="form-row">
             <label>
+              API 类型 <span className="required">*</span>
+              <select
+                value={editedModel.api_type || 'openai'}
+                onChange={(e) => setEditedModel({ ...editedModel, api_type: e.target.value as 'openai' | 'anthropic' })}
+              >
+                <option value="openai">OpenAI</option>
+                <option value="anthropic">Anthropic</option>
+              </select>
+            </label>
+          </div>
+          <div className="form-row">
+            <label>
               API URL <span className="required">*</span>
               <input
                 type="text"
@@ -481,6 +509,10 @@ function ModelConfigItem({
           <div className="detail-item">
             <span className="label">模型名称:</span>
             <span className="value">{model.name}</span>
+          </div>
+          <div className="detail-item">
+            <span className="label">API 类型:</span>
+            <span className="value">{model.api_type === 'anthropic' ? 'Anthropic' : 'OpenAI'}</span>
           </div>
           <div className="detail-item">
             <span className="label">API URL:</span>

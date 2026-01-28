@@ -101,7 +101,8 @@ export function updateModelsConfig(
 export function editMessage(
   convId: string,
   messageIndex: number,
-  newContent: string
+  newContent: string,
+  newAttachments?: any[]
 ): Promise<Conversation>;
 
 /**

@@ -5,6 +5,7 @@ import type { Message, Stage1Result, Stage2Result, Stage3Result, Stage4Result } 
 import InputArea from './InputArea';
 import ModelSelector from './ModelSelector';
 import ContextManager from './ContextManager';
+import type { ModalType } from '../App';
 import './ChatView.css';
 
 /**
@@ -15,20 +16,20 @@ interface ChatInterfaceProps {
   models: Array<{ name: string; display_name: string; description: string; is_chairman: boolean }>;
   onRefreshModels: () => Promise<void>;
   onUpdateTitle?: (convId: string, newTitle: string) => void;
+  activeModal: ModalType;
+  onSetActiveModal: (modal: ModalType) => void;
 }
 
 /**
  * ChatInterface 组件
  * 主聊天界面，整合所有子组件，处理消息发送和 SSE 事件流
  */
-function ChatInterface({ convId, models, onRefreshModels, onUpdateTitle }: ChatInterfaceProps) {
+function ChatInterface({ convId, models, onRefreshModels, onUpdateTitle, activeModal, onSetActiveModal }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showModelSelector, setShowModelSelector] = useState(false);
-  const [showContextManager, setShowContextManager] = useState(false);
   const [modelStatuses, setModelStatuses] = useState<Record<string, {
     status: string;
     error?: string;
@@ -1002,14 +1003,14 @@ function ChatInterface({ convId, models, onRefreshModels, onUpdateTitle }: ChatI
         <div className="header-actions">
           <button
             className="context-manager-trigger"
-            onClick={() => setShowContextManager(true)}
+            onClick={() => onSetActiveModal('contextManager')}
             title="上下文管理"
           >
             📚 上下文
           </button>
           <button
             className="model-selector-trigger"
-            onClick={() => setShowModelSelector(!showModelSelector)}
+            onClick={() => onSetActiveModal(activeModal === 'modelSelector' ? null : 'modelSelector')}
             title="选择模型"
           >
             🤖 模型 ({selectedModels.length})
@@ -1017,8 +1018,8 @@ function ChatInterface({ convId, models, onRefreshModels, onUpdateTitle }: ChatI
         </div>
       </div>
 
-      {showModelSelector && (
-        <div className="model-selector-overlay" onClick={() => setShowModelSelector(false)}>
+      {activeModal === 'modelSelector' && (
+        <div className="model-selector-overlay" onClick={() => onSetActiveModal(null)}>
           <div className="model-selector-popup" onClick={(e) => e.stopPropagation()}>
             <ModelSelector
               selectedModels={selectedModels}
@@ -1027,7 +1028,7 @@ function ChatInterface({ convId, models, onRefreshModels, onUpdateTitle }: ChatI
             />
             <button
               className="close-selector-btn"
-              onClick={() => setShowModelSelector(false)}
+              onClick={() => onSetActiveModal(null)}
             >
               确定
             </button>
@@ -1035,10 +1036,10 @@ function ChatInterface({ convId, models, onRefreshModels, onUpdateTitle }: ChatI
         </div>
       )}
 
-      {showContextManager && (
+      {activeModal === 'contextManager' && (
         <ContextManager
           convId={convId}
-          onClose={() => setShowContextManager(false)}
+          onClose={() => onSetActiveModal(null)}
         />
       )}
 

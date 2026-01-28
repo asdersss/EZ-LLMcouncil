@@ -38,6 +38,21 @@ if not exist "backend\backend\file_metadata.json" (
     echo [跳过] 文件元数据已存在
 )
 
+echo [1.6/7] 检查供应商配置...
+if not exist "backend\providers.json" (
+    if exist "backend\providers.example.json" (
+        echo [配置] 未找到 providers.json，从模板复制...
+        copy "backend\providers.example.json" "backend\providers.json" >nul
+        echo [完成] 已创建 backend\providers.json
+    ) else (
+        echo [错误] 未找到供应商配置模板 backend\providers.example.json
+        pause
+        exit /b 1
+    )
+) else (
+    echo [跳过] 供应商配置已存在
+)
+
 echo [2/7] 检查环境...
 python --version >nul 2>&1
 if errorlevel 1 (

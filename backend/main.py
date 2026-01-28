@@ -152,7 +152,27 @@ async def chat_stream_generator(request: ChatRequest, config: Dict[str, Any]):
             logger.info(f"添加新的用户消息")
         
         # 3. 准备模型配置和设置
-        model_configs = {m["name"]: m for m in config.get("models", [])}
+        # 从providers中构建model_configs字典
+        model_configs = {}
+        providers = config.get("providers", [])
+        for provider in providers:
+            provider_name = provider.get("name", "")
+            provider_models = provider.get("models", [])
+            
+            for model in provider_models:
+                model_name = model.get("name", "")
+                full_model_name = f"{model_name}/{provider_name}"
+                
+                model_configs[full_model_name] = {
+                    "name": full_model_name,
+                    "display_name": model.get("display_name", model_name),
+                    "description": model.get("description", ""),
+                    "url": provider.get("url", ""),
+                    "api_key": provider.get("api_key", ""),
+                    "api_type": provider.get("api_type", "openai"),
+                    "provider": provider_name
+                }
+        
         chairman = config.get("chairman", "")
         settings = config.get("settings", {})
         temperature = settings.get("temperature", 0.7)
@@ -438,8 +458,18 @@ async def chat(request: ChatRequest):
         # 加载配置
         config = load_config()
         
+        # 从providers中构建可用模型列表
+        available_models = set()
+        providers = config.get("providers", [])
+        for provider in providers:
+            provider_name = provider.get("name", "")
+            models = provider.get("models", [])
+            for model in models:
+                model_name = model.get("name", "")
+                full_model_name = f"{model_name}/{provider_name}"
+                available_models.add(full_model_name)
+        
         # 验证模型是否存在
-        available_models = {m["name"] for m in config.get("models", [])}
         for model in request.models:
             if model not in available_models:
                 raise HTTPException(
@@ -613,18 +643,27 @@ async def get_models():
     """
     try:
         config = load_config()
-        models = config.get("models", [])
+        providers = config.get("providers", [])
         chairman = config.get("chairman", "")
         
-        # 格式化模型信息
+        # 格式化模型信息 - 从所有供应商中提取模型
         formatted_models = []
-        for model in models:
-            formatted_models.append({
-                "name": model.get("name", ""),
-                "display_name": model.get("display_name", ""),
-                "description": model.get("description", ""),
-                "is_chairman": model.get("name") == chairman
-            })
+        for provider in providers:
+            provider_name = provider.get("name", "")
+            models = provider.get("models", [])
+            
+            for model in models:
+                model_name = model.get("name", "")
+                # 模型全名格式: 模型名称/供应商
+                full_model_name = f"{model_name}/{provider_name}"
+                
+                formatted_models.append({
+                    "name": full_model_name,
+                    "display_name": model.get("display_name", model_name),
+                    "description": model.get("description", ""),
+                    "provider": provider_name,
+                    "is_chairman": full_model_name == chairman
+                })
         
         return {
             "models": formatted_models,
@@ -762,12 +801,33 @@ async def get_models_config():
     """
     try:
         config = load_config()
-        models = config.get("models", [])
+        providers = config.get("providers", [])
         chairman = config.get("chairman", "")
+        
+        # 构建模型配置列表（兼容旧格式）
+        models = []
+        for provider in providers:
+            provider_name = provider.get("name", "")
+            provider_models = provider.get("models", [])
+            
+            for model in provider_models:
+                model_name = model.get("name", "")
+                full_model_name = f"{model_name}/{provider_name}"
+                
+                models.append({
+                    "name": full_model_name,
+                    "display_name": model.get("display_name", model_name),
+                    "description": model.get("description", ""),
+                    "url": provider.get("url", ""),
+                    "api_key": provider.get("api_key", ""),
+                    "api_type": provider.get("api_type", "openai"),
+                    "provider": provider_name
+                })
         
         return {
             "models": models,
-            "chairman": chairman
+            "chairman": chairman,
+            "providers": providers
         }
         
     except Exception as e:
@@ -1512,6 +1572,324 @@ async def delete_file_endpoint(md5: str):
         raise
     except Exception as e:
         logger.error(f"删除文件错误: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+# ==================== 供应商管理 API ====================
+
+from provider_manager import (
+    load_providers,
+    add_provider,
+    update_provider,
+    delete_provider,
+    fetch_provider_models,
+    test_model,
+    get_provider_models,
+    add_model_to_provider,
+    delete_model_from_provider
+)
+
+
+class ProviderCreate(BaseModel):
+    """创建供应商请求模型"""
+    name: str = Field(..., description="供应商名称")
+    url: str = Field(..., description="API URL")
+    api_key: str = Field(..., description="API密钥")
+    api_type: str = Field(..., description="API类型 (openai/anthropic)")
+
+
+class ProviderUpdate(BaseModel):
+    """更新供应商请求模型"""
+    url: Optional[str] = Field(None, description="API URL")
+    api_key: Optional[str] = Field(None, description="API密钥")
+    api_type: Optional[str] = Field(None, description="API类型 (openai/anthropic)")
+
+
+class ModelAddRequest(BaseModel):
+    """添加模型到本地配置请求模型"""
+    provider_name: str = Field(..., description="供应商名称")
+    model_id: str = Field(..., description="模型ID")
+    display_name: str = Field(..., description="显示名称")
+    description: Optional[str] = Field("", description="模型描述")
+
+
+@app.get("/api/providers")
+async def get_providers():
+    """
+    获取所有供应商列表
+    
+    Returns:
+        供应商列表
+    """
+    try:
+        providers = load_providers()
+        # 隐藏API密钥
+        for provider in providers:
+            if "api_key" in provider:
+                provider["api_key_masked"] = "*" * 20
+                del provider["api_key"]
+        
+        return {
+            "providers": providers,
+            "total": len(providers)
+        }
+    except Exception as e:
+        logger.error(f"获取供应商列表错误: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.post("/api/providers")
+async def create_provider(provider: ProviderCreate):
+    """
+    添加新供应商
+    
+    Args:
+        provider: 供应商信息
+    
+    Returns:
+        创建结果
+    """
+    try:
+        success, error = add_provider(
+            name=provider.name,
+            url=provider.url,
+            api_key=provider.api_key,
+            api_type=provider.api_type
+        )
+        
+        if not success:
+            raise HTTPException(status_code=400, detail=error)
+        
+        logger.info(f"供应商已添加: {provider.name}")
+        
+        return {
+            "message": "供应商添加成功",
+            "name": provider.name
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"添加供应商错误: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.put("/api/providers/{provider_name}")
+async def update_provider_endpoint(provider_name: str, provider: ProviderUpdate):
+    """
+    更新供应商配置
+    
+    Args:
+        provider_name: 供应商名称
+        provider: 更新的供应商信息
+    
+    Returns:
+        更新结果
+    """
+    try:
+        success, error = update_provider(
+            name=provider_name,
+            url=provider.url,
+            api_key=provider.api_key,
+            api_type=provider.api_type
+        )
+        
+        if not success:
+            raise HTTPException(status_code=400, detail=error)
+        
+        logger.info(f"供应商已更新: {provider_name}")
+        
+        return {
+            "message": "供应商更新成功",
+            "name": provider_name
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"更新供应商错误: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.delete("/api/providers/{provider_name}")
+async def delete_provider_endpoint(provider_name: str):
+    """
+    删除供应商
+    
+    Args:
+        provider_name: 供应商名称
+    
+    Returns:
+        删除结果
+    """
+    try:
+        success, error = delete_provider(provider_name)
+        
+        if not success:
+            raise HTTPException(status_code=400, detail=error)
+        
+        logger.info(f"供应商已删除: {provider_name}")
+        
+        return {
+            "message": "供应商删除成功",
+            "name": provider_name
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"删除供应商错误: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.get("/api/providers/{provider_name}/models")
+async def get_provider_models_endpoint(provider_name: str):
+    """
+    获取供应商下已添加的模型列表
+    
+    Args:
+        provider_name: 供应商名称
+    
+    Returns:
+        模型列表
+    """
+    try:
+        models, error = get_provider_models(provider_name)
+        
+        if error:
+            raise HTTPException(status_code=400, detail=error)
+        
+        return {
+            "provider": provider_name,
+            "models": models,
+            "total": len(models) if models else 0
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取供应商模型列表错误: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.get("/api/providers/{provider_name}/models/fetch")
+async def fetch_provider_models_endpoint(provider_name: str):
+    """
+    从供应商API获取可用模型列表
+    
+    Args:
+        provider_name: 供应商名称
+    
+    Returns:
+        模型列表
+    """
+    try:
+        models, error = await fetch_provider_models(provider_name)
+        
+        if error:
+            raise HTTPException(status_code=400, detail=error)
+        
+        return {
+            "provider": provider_name,
+            "models": models,
+            "total": len(models) if models else 0
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取供应商API模型列表错误: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.post("/api/providers/models/test")
+async def test_provider_model(provider_name: str = Query(...), model_name: str = Query(...)):
+    """
+    测试模型是否可用
+    
+    Args:
+        provider_name: 供应商名称
+        model_name: 模型名称
+    
+    Returns:
+        测试结果
+    """
+    try:
+        success, response, error = await test_model(provider_name, model_name)
+        
+        return {
+            "provider": provider_name,
+            "model": model_name,
+            "success": success,
+            "response": response,
+            "error": error
+        }
+    except Exception as e:
+        logger.error(f"测试模型错误: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.post("/api/providers/{provider_name}/models")
+async def add_model_to_provider_endpoint(provider_name: str, request: ModelAddRequest):
+    """
+    添加模型到供应商
+    
+    Args:
+        provider_name: 供应商名称
+        request: 添加模型请求
+    
+    Returns:
+        添加结果
+    """
+    try:
+        success, error = add_model_to_provider(
+            provider_name=provider_name,
+            model_name=request.model_id,
+            display_name=request.display_name,
+            description=request.description
+        )
+        
+        if not success:
+            raise HTTPException(status_code=400, detail=error)
+        
+        logger.info(f"模型已添加: {request.model_id} (供应商: {provider_name})")
+        
+        return {
+            "message": "模型添加成功",
+            "provider": provider_name,
+            "model_name": request.model_id
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"添加模型错误: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.delete("/api/providers/{provider_name}/models/{model_name}")
+async def delete_model_from_provider_endpoint(provider_name: str, model_name: str):
+    """
+    从供应商删除模型
+    
+    Args:
+        provider_name: 供应商名称
+        model_name: 模型名称
+    
+    Returns:
+        删除结果
+    """
+    try:
+        success, error = delete_model_from_provider(provider_name, model_name)
+        
+        if not success:
+            raise HTTPException(status_code=400, detail=error)
+        
+        logger.info(f"模型已删除: {model_name} (供应商: {provider_name})")
+        
+        return {
+            "message": "模型删除成功",
+            "provider": provider_name,
+            "model_name": model_name
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"删除模型错误: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
