@@ -25,11 +25,6 @@ interface Attachment {
 /**
  * 上下文配置类型
  */
-interface ContextConfig {
-  maxTurns: number;
-  contextAttachments: Attachment[];
-}
-
 /**
  * 上下文管理器组件
  * 允许用户配置上下文轮数和管理上下文附件

@@ -10,14 +10,18 @@ import './ChatView.css';
  * ChatView 组件
  * 主聊天界面，显示消息历史和处理消息发送
  */
-function ChatView({ conversationId }) {
-  const [messages, setMessages] = useState([]);
-  const [selectedModels, setSelectedModels] = useState([]);
+interface ChatViewProps {
+  conversationId: string | null;
+}
+
+function ChatView({ conversationId }: ChatViewProps) {
+  const [messages, setMessages] = useState<any[]>([]);
+  const [selectedModels, setSelectedModels] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [streaming, setStreaming] = useState(false);
-  const [error, setError] = useState(null);
-  const messagesEndRef = useRef(null);
-  const eventSourceRef = useRef(null);
+  const [error, setError] = useState<string | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
 
   // 加载对话历史
   useEffect(() => {
@@ -38,6 +42,7 @@ function ChatView({ conversationId }) {
   };
 
   const loadConversation = async () => {
+    if (!conversationId) return;
     try {
       setLoading(true);
       setError(null);
@@ -48,8 +53,8 @@ function ChatView({ conversationId }) {
       
       // 检查是否有活跃的会议
       await checkAndReconnectActiveMeeting();
-    } catch (err) {
-      setError('加载对话失败: ' + err.message);
+    } catch (err: any) {
+      setError('加载对话失败: ' + (err.message || String(err)));
       console.error('加载对话失败:', err);
     } finally {
       setLoading(false);
@@ -58,13 +63,15 @@ function ChatView({ conversationId }) {
 
   // 检查并重连活跃会议
   const checkAndReconnectActiveMeeting = async () => {
+    if (!conversationId) return;
     try {
       console.log('[ChatView] 正在检查对话的活跃会议:', conversationId);
-      const meetings = await listConversationMeetings(conversationId);
+      const result = await listConversationMeetings(conversationId);
+      const meetings = (result as any).meetings || [];
       console.log('[ChatView] 获取到会议列表:', meetings);
       
       // 查找活跃的会议（非completed/failed/cancelled状态）
-      const activeMeeting = meetings.find(m =>
+      const activeMeeting = meetings.find((m: any) =>
         !['completed', 'failed', 'cancelled'].includes(m.status)
       );
       
@@ -88,7 +95,7 @@ function ChatView({ conversationId }) {
   };
 
   // 重连到会议
-  const reconnectToMeeting = (meetingId) => {
+  const reconnectToMeeting = (meetingId: string) => {
     try {
       // 使用会议流API重连
       const eventSource = new EventSource(
@@ -97,13 +104,13 @@ function ChatView({ conversationId }) {
       eventSourceRef.current = eventSource;
 
       // 用于累积流式响应
-      const streamingMessages = {};
-      let stage1Results = [];
-      let stage2Results = [];
-      let stage3Result = null;
-      let stage4Result = null;
+      // const streamingMessages: Record<string, any> = {};
+      const stage1Results: any[] = [];
+      const stage2Results: any[] = [];
+      // let stage3Result: any = null;
+      // let stage4Result: any = null;
 
-      eventSource.addEventListener('stage1_progress', (event) => {
+      eventSource.addEventListener('stage1_progress', (event: MessageEvent) => {
         try {
           const data = JSON.parse(event.data);
           console.log('Stage 1 进度:', data);
@@ -120,17 +127,17 @@ function ChatView({ conversationId }) {
         }
       });
 
-      eventSource.addEventListener('stage1_complete', (event) => {
+      eventSource.addEventListener('stage1_complete', (event: MessageEvent) => {
         try {
           const data = JSON.parse(event.data);
           console.log('Stage 1 完成:', data);
-          stage1Results = data.results || [];
+          // stage1Results = data.results || [];
         } catch (err) {
           console.error('解析stage1_complete失败:', err);
         }
       });
 
-      eventSource.addEventListener('stage2_progress', (event) => {
+      eventSource.addEventListener('stage2_progress', (event: MessageEvent) => {
         try {
           const data = JSON.parse(event.data);
           console.log('Stage 2 进度:', data);
@@ -146,37 +153,37 @@ function ChatView({ conversationId }) {
         }
       });
 
-      eventSource.addEventListener('stage2_complete', (event) => {
+      eventSource.addEventListener('stage2_complete', (event: MessageEvent) => {
         try {
           const data = JSON.parse(event.data);
           console.log('Stage 2 完成:', data);
-          stage2Results = data.results || [];
+          // stage2Results = data.results || [];
         } catch (err) {
           console.error('解析stage2_complete失败:', err);
         }
       });
 
-      eventSource.addEventListener('stage3_complete', (event) => {
+      eventSource.addEventListener('stage3_complete', (event: MessageEvent) => {
         try {
           const data = JSON.parse(event.data);
           console.log('Stage 3 完成:', data);
-          stage3Result = data;
+          // stage3Result = data;
         } catch (err) {
           console.error('解析stage3_complete失败:', err);
         }
       });
 
-      eventSource.addEventListener('stage4_complete', (event) => {
+      eventSource.addEventListener('stage4_complete', (event: MessageEvent) => {
         try {
           const data = JSON.parse(event.data);
           console.log('Stage 4 完成:', data);
-          stage4Result = data;
+          // stage4Result = data;
         } catch (err) {
           console.error('解析stage4_complete失败:', err);
         }
       });
 
-      eventSource.addEventListener('complete', (event) => {
+      eventSource.addEventListener('complete', (event: MessageEvent) => {
         try {
           const data = JSON.parse(event.data);
           console.log('会议完成:', data);
@@ -191,7 +198,7 @@ function ChatView({ conversationId }) {
         }
       });
 
-      eventSource.addEventListener('error', (event) => {
+      eventSource.addEventListener('error', (event: MessageEvent) => {
         try {
           const data = JSON.parse(event.data);
           console.error('会议错误:', data);
@@ -204,7 +211,7 @@ function ChatView({ conversationId }) {
         }
       });
 
-      eventSource.addEventListener('heartbeat', (event) => {
+      eventSource.addEventListener('heartbeat', () => {
         // 心跳，保持连接
         console.log('收到心跳');
       });
@@ -216,15 +223,15 @@ function ChatView({ conversationId }) {
         eventSource.close();
         eventSourceRef.current = null;
       };
-    } catch (err) {
-      setError('重连会议失败: ' + err.message);
+    } catch (err: any) {
+      setError('重连会议失败: ' + (err.message || String(err)));
       setStreaming(false);
       console.error('重连会议失败:', err);
     }
   };
 
   // 处理发送消息
-  const handleSendMessage = (content, attachments) => {
+  const handleSendMessage = (content: string, attachments: any[]) => {
     if (!conversationId) {
       setError('请先选择或创建一个对话');
       return;
@@ -253,7 +260,7 @@ function ChatView({ conversationId }) {
       eventSourceRef.current = eventSource;
 
       // 用于累积流式响应
-      const streamingMessages = {};
+      const streamingMessages: Record<string, any> = {};
 
       eventSource.onmessage = (event) => {
         try {
@@ -277,7 +284,7 @@ function ChatView({ conversationId }) {
             // 更新消息列表
             setMessages(prev => {
               const filtered = prev.filter(m => !m.streaming);
-              const streaming = Object.values(streamingMessages).map(m => ({
+              const streaming = Object.values(streamingMessages).map((m: any) => ({
                 ...m,
                 streaming: true
               }));
@@ -317,8 +324,8 @@ function ChatView({ conversationId }) {
         eventSource.close();
         eventSourceRef.current = null;
       };
-    } catch (err) {
-      setError('发送消息失败: ' + err.message);
+    } catch (err: any) {
+      setError('发送消息失败: ' + (err.message || String(err)));
       setStreaming(false);
       console.error('发送消息失败:', err);
     }
@@ -340,6 +347,7 @@ function ChatView({ conversationId }) {
         <ModelSelector
           selectedModels={selectedModels}
           onModelsChange={setSelectedModels}
+          onRefreshModels={async () => {}}
         />
       </div>
 

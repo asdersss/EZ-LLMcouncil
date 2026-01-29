@@ -124,7 +124,7 @@ function ModelSelector({ selectedModels, onModelsChange, onRefreshModels }: Mode
   };
 
   // 全选/取消全选供应商下的模型
-  const toggleProviderModels = (provider: string, models: ModelInfo[]) => {
+  const toggleProviderModels = (_provider: string, models: ModelInfo[]) => {
     const providerModelNames = models.map(m => m.name);
     const allSelected = providerModelNames.every(name => selectedModels.includes(name));
     

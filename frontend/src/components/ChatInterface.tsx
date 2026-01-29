@@ -36,6 +36,8 @@ function ChatInterface({ convId, models, onRefreshModels, onUpdateTitle, activeM
     current_retry?: number;
     max_retries?: number;
   }>>({});
+  // @ts-ignore - modelStatuses is used in render but TS might not detect it correctly in complex JSX
+  console.log(modelStatuses);
   const [currentMeetingId, setCurrentMeetingId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);

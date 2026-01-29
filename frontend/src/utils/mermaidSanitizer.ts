@@ -15,7 +15,7 @@ export function sanitizeMermaidCode(code: string): string {
 
   // 1. 清理节点文本中的特殊字符
   // 匹配方括号内的文本：[文本内容]
-  sanitized = sanitized.replace(/\[([^\]]+)\]/g, (match, text) => {
+  sanitized = sanitized.replace(/\[([^\]]+)\]/g, (_match, text) => {
     let cleaned = text
       // 移除引号
       .replace(/["']/g, '')
@@ -45,7 +45,7 @@ export function sanitizeMermaidCode(code: string): string {
   });
 
   // 2. 清理花括号内的决策文本：{文本}
-  sanitized = sanitized.replace(/\{([^}]+)\}/g, (match, text) => {
+  sanitized = sanitized.replace(/\{([^}]+)\}/g, (_match, text) => {
     let cleaned = text
       .replace(/["']/g, '')
       .replace(/：/g, ' ')
@@ -64,7 +64,7 @@ export function sanitizeMermaidCode(code: string): string {
   });
 
   // 3. 清理连接线上的文本：-->|文本|
-  sanitized = sanitized.replace(/\|([^|]+)\|/g, (match, text) => {
+  sanitized = sanitized.replace(/\|([^|]+)\|/g, (_match, text) => {
     let cleaned = text
       .replace(/["']/g, '')
       .replace(/：/g, '')

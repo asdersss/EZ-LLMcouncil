@@ -11,7 +11,8 @@ from datetime import datetime
 
 from fastapi import FastAPI, HTTPException, Query, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 import os
 import shutil
@@ -57,11 +58,48 @@ app = FastAPI(
 # CORS 配置
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["http://localhost:5173", "http://localhost:8007"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 挂载前端静态文件
+# 检查前端构建目录是否存在
+import sys
+
+def get_resource_path(relative_path):
+    """获取资源文件的绝对路径，兼容开发环境和PyInstaller打包环境"""
+    if hasattr(sys, '_MEIPASS'):
+        # PyInstaller 打包后的临时目录
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), relative_path)
+
+# 在开发环境中，路径是 ../frontend/dist
+# 在打包环境中，路径是 frontend/dist (根据 build.spec 中的 datas 配置)
+if hasattr(sys, '_MEIPASS'):
+    # 打包后，优先查找当前目录下的 frontend/dist
+    # 如果不存在，再使用打包内的资源
+    current_dir_dist = os.path.join(os.getcwd(), "frontend", "dist")
+    if os.path.exists(current_dir_dist):
+        frontend_dist = current_dir_dist
+        logger.info(f"使用外部前端资源: {frontend_dist}")
+    else:
+        frontend_dist = get_resource_path(os.path.join("frontend", "dist"))
+        logger.info(f"使用内置前端资源: {frontend_dist}")
+else:
+    frontend_dist = get_resource_path(os.path.join("frontend", "dist"))
+
+logger.info(f"前端静态文件路径: {frontend_dist}")
+
+if os.path.exists(frontend_dist):
+    app.mount("/assets", StaticFiles(directory=os.path.join(frontend_dist, "assets")), name="assets")
+    
+    @app.get("/")
+    async def serve_frontend():
+        return FileResponse(os.path.join(frontend_dist, "index.html"))
+else:
+    logger.warning(f"前端构建目录不存在: {frontend_dist}")
 
 
 def load_config() -> Dict[str, Any]:
@@ -2083,9 +2121,9 @@ async def global_exception_handler(request, exc):
     }
 
 
-@app.get("/")
-async def root():
-    """根路径"""
+@app.get("/api")
+async def api_root():
+    """API根路径"""
     return {
         "name": "LLM Council Simplified API",
         "version": "1.0.0",
@@ -2096,4 +2134,11 @@ async def root():
 
 if __name__ == "__main__":
     import uvicorn
+    
+    # 打印友好的启动提示
+    print("\n" + "="*60)
+    print("LLM Council 已启动")
+    print("请在浏览器中访问: http://localhost:8007")
+    print("="*60 + "\n")
+    
     uvicorn.run(app, host="0.0.0.0", port=8007)

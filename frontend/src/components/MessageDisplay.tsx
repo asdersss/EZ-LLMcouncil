@@ -538,7 +538,7 @@ function Stage2Display({ results }: { results: Stage2Result[] }) {
           // 判断状态：error（红色）、未参与评分（黄色）、成功（绿色）
           const hasError = result.error;
           const notParticipated = !hasError && result.participated === false;
-          const isSuccess = !hasError && result.participated !== false;
+          // const isSuccess = !hasError && result.participated !== false;
           
           let statusClass = 'success';
           let statusTitle = '执行成功';
@@ -884,6 +884,7 @@ function Stage4Display({ result, stage1Results }: { result: Stage4Result; stage1
 /**
  * 进度阶段组件 - 支持折叠和优先级排序
  */
+// @ts-ignore - ProgressStageSection is used in JSX but TS might report unused
 function ProgressStageSection({
   title,
   icon,

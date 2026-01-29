@@ -1,5 +1,3 @@
-import { useState, useEffect } from 'react';
-import { getConversations } from '../utils/api';
 import './Sidebar.css';
 
 /**
