@@ -214,6 +214,10 @@
   border-color: var(--primary-color);
 }
 
+.model-item.selected .model-name {
+  color: white;
+}
+
 .model-item.selected .model-description {
   color: rgba(255, 255, 255, 0.8);
 }
