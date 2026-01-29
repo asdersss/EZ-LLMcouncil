@@ -284,6 +284,13 @@
   font-weight: 500;
 }
 
+.provider-actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.edit-provider-btn,
 .delete-provider-btn {
   background: none;
   border: none;
@@ -294,6 +301,7 @@
   transition: opacity 0.2s;
 }
 
+.edit-provider-btn:hover,
 .delete-provider-btn:hover {
   opacity: 1;
 }

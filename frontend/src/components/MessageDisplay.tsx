@@ -5,6 +5,7 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import CodeBlock from './CodeBlock';
+import ProgressDisplay from './ProgressDisplay';
 import './MessageDisplay.css';
 
 // KaTeX 配置选项
@@ -975,98 +976,6 @@ function ProgressStageSection({
   );
 }
 
-/**
- * 执行进度展示组件 - 按阶段分组显示
- */
-function ExecutionProgressDisplay({ modelStatuses }: {
-  modelStatuses?: Record<string, {
-    status: string;
-    error?: string;
-    current_retry?: number;
-    max_retries?: number;
-  }>
-}) {
-  if (!modelStatuses || Object.keys(modelStatuses).length === 0) {
-    return null;
-  }
-
-  // 按阶段分组进度
-  const stage1Progress: Array<[string, { status: string; error?: string }]> = [];
-  const stage2Progress: Array<[string, { status: string; error?: string }]> = [];
-  const stage3Progress: Array<[string, { status: string; error?: string }]> = [];
-  const stage4Progress: Array<[string, { status: string; error?: string }]> = [];
-
-  // 首先收集 Stage 1 的状态，找出成功的模型
-  const stage1SuccessModels = new Set<string>();
-  
-  Object.entries(modelStatuses).forEach(([key, status]) => {
-    if (!key.includes('-stage2') && !key.includes('-stage3') && key !== 'stage4') {
-      // Stage 1 模型
-      stage1Progress.push([key, status]);
-      // 如果状态是成功（已完成且没有错误），记录为成功模型
-      if (!status.error && (status.status === '已完成' || status.status.includes('完成'))) {
-        stage1SuccessModels.add(key);
-      }
-    }
-  });
-
-  // 然后处理其他阶段，Stage 2 只显示 Stage 1 成功的模型
-  Object.entries(modelStatuses).forEach(([key, status]) => {
-    if (key.includes('-stage2')) {
-      const modelName = key.replace('-stage2', '');
-      // 只显示 Stage 1 成功的模型的 Stage 2 进度
-      if (stage1SuccessModels.has(modelName)) {
-        stage2Progress.push([modelName, status]);
-      }
-    } else if (key.includes('-stage3')) {
-      stage3Progress.push([key.replace('-stage3', ''), status]);
-    } else if (key === 'stage4') {
-      stage4Progress.push(['排名计算', status]);
-    }
-  });
-
-  return (
-    <div className="stage-content">
-      <div className="execution-progress">
-        {/* Stage 4 进度 */}
-        {stage4Progress.length > 0 && (
-          <ProgressStageSection
-            title="Stage 4: 最终排名"
-            icon="🏆"
-            progress={stage4Progress}
-          />
-        )}
-
-        {/* Stage 3 进度 */}
-        {stage3Progress.length > 0 && (
-          <ProgressStageSection
-            title="Stage 3: 主席综合"
-            icon="✨"
-            progress={stage3Progress}
-          />
-        )}
-
-        {/* Stage 2 进度 */}
-        {stage2Progress.length > 0 && (
-          <ProgressStageSection
-            title="Stage 2: 同行评审"
-            icon="🎯"
-            progress={stage2Progress}
-          />
-        )}
-
-        {/* Stage 1 进度 */}
-        {stage1Progress.length > 0 && (
-          <ProgressStageSection
-            title="Stage 1: 模型响应"
-            icon="📝"
-            progress={stage1Progress}
-          />
-        )}
-      </div>
-    </div>
-  );
-}
 
 /**
  * 助手消息组件（四阶段结果展示 + 执行进度）
@@ -1158,8 +1067,8 @@ function AssistantMessage({ message }: { message: Message }) {
       </div>
       
       <div className="stage-tabs">
-        {/* 只在未完成所有阶段时显示执行进度标签 */}
-        {hasProgress && !allStagesComplete && (
+        {/* 只在未完成或streaming时显示执行进度标签 */}
+        {hasProgress && (!allStagesComplete || message.streaming) && (
           <button
             className={`stage-tab ${activeTab === 'progress' ? 'active' : ''}`}
             onClick={() => setActiveTab('progress')}
@@ -1206,7 +1115,7 @@ function AssistantMessage({ message }: { message: Message }) {
       
       <div className="stage-panel">
         {activeTab === 'progress' && hasProgress && (
-          <ExecutionProgressDisplay modelStatuses={message.modelStatuses} />
+          <ProgressDisplay modelStatuses={message.modelStatuses} stage1Results={message.stage1} />
         )}
         {activeTab === 'stage1' && hasStage1 && (
           <Stage1Display results={message.stage1!} />

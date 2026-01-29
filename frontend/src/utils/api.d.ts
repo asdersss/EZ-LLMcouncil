@@ -1,52 +1,75 @@
 /**
- * API 类型声明文件
+ * API 类型声明
  */
 
-export interface Model {
-  name: string;
-  display_name: string;
-  description: string;
-  is_chair: boolean;
-}
-
-export interface Attachment {
-  name: string;
-  content: string;
-  type?: string;
-}
-
-export interface Conversation {
-  id: string;
-  title: string;
-  created_at: string;
-  updated_at: string;
-  messages: any[];
-}
+/**
+ * 启动新会议（后台运行）
+ */
+export function startMeeting(
+  convId: string,
+  content: string,
+  models: string[],
+  attachments?: any[]
+): Promise<{
+  meeting_id: string;
+  conv_id: string;
+  message: string;
+}>;
 
 /**
- * 发送消息 (SSE)
+ * 获取会议状态
+ */
+export function getMeetingStatus(meetingId: string): Promise<{
+  meeting_id: string;
+  conv_id: string;
+  status: string;
+  progress: any;
+  created_at: string;
+  updated_at: string;
+}>;
+
+/**
+ * 订阅会议更新流
+ */
+export function subscribeMeetingUpdates(meetingId: string): EventSource;
+
+/**
+ * 取消会议
+ */
+export function cancelMeeting(meetingId: string): Promise<{
+  message: string;
+  meeting_id: string;
+}>;
+
+/**
+ * 列出对话的所有会议
+ */
+export function listConversationMeetings(convId: string): Promise<any[]>;
+
+/**
+ * 发送消息 (SSE) - 旧版本
  */
 export function sendMessage(
   convId: string,
   content: string,
   models: string[],
-  attachments?: Attachment[]
+  attachments?: any[]
 ): EventSource;
 
 /**
  * 获取对话列表
  */
-export function getConversations(): Promise<Conversation[]>;
+export function getConversations(): Promise<any[]>;
 
 /**
  * 获取对话详情
  */
-export function getConversation(convId: string): Promise<Conversation>;
+export function getConversation(convId: string): Promise<any>;
 
 /**
  * 创建新对话
  */
-export function createConversation(): Promise<Conversation>;
+export function createConversation(): Promise<any>;
 
 /**
  * 删除对话
@@ -56,7 +79,7 @@ export function deleteConversation(convId: string): Promise<void>;
 /**
  * 获取模型列表
  */
-export function getModels(): Promise<Model[]>;
+export function getModels(): Promise<any[]>;
 
 /**
  * 上传附件
@@ -64,36 +87,14 @@ export function getModels(): Promise<Model[]>;
 export function uploadAttachment(file: File): Promise<any>;
 
 /**
- * 模型配置接口
+ * 获取完整的模型配置
  */
-export interface ModelConfig {
-  name: string;
-  url: string;
-  api_key: string;
-  api_model_name?: string;
-  display_name: string;
-  description: string;
-}
-
-/**
- * 获取完整的模型配置（包含API密钥）
- */
-export function getModelsConfig(): Promise<{
-  models: ModelConfig[];
-  chairman: string;
-}>;
+export function getModelsConfig(): Promise<any>;
 
 /**
  * 更新模型配置
  */
-export function updateModelsConfig(
-  models: ModelConfig[],
-  chairman: string
-): Promise<{
-  models: ModelConfig[];
-  chairman: string;
-  message: string;
-}>;
+export function updateModelsConfig(models: any[], chairman: string): Promise<any>;
 
 /**
  * 编辑消息
@@ -103,12 +104,9 @@ export function editMessage(
   messageIndex: number,
   newContent: string,
   newAttachments?: any[]
-): Promise<Conversation>;
+): Promise<any>;
 
 /**
  * 删除消息
  */
-export function deleteMessage(
-  convId: string,
-  messageIndex: number
-): Promise<Conversation>;
+export function deleteMessage(convId: string, messageIndex: number): Promise<any>;

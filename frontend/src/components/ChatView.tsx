@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { getConversation, sendMessage } from '../utils/api';
+import { getConversation, sendMessage, listConversationMeetings } from '../utils/api';
 import InputArea from './InputArea';
 import ModelSelector from './ModelSelector';
 import './ChatView.css';
@@ -43,11 +43,183 @@ function ChatView({ conversationId }) {
       setError(null);
       const conv = await getConversation(conversationId);
       setMessages(conv.messages || []);
+      
+      console.log('[ChatView] 对话加载完成，开始检查活跃会议...');
+      
+      // 检查是否有活跃的会议
+      await checkAndReconnectActiveMeeting();
     } catch (err) {
       setError('加载对话失败: ' + err.message);
       console.error('加载对话失败:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 检查并重连活跃会议
+  const checkAndReconnectActiveMeeting = async () => {
+    try {
+      console.log('[ChatView] 正在检查对话的活跃会议:', conversationId);
+      const meetings = await listConversationMeetings(conversationId);
+      console.log('[ChatView] 获取到会议列表:', meetings);
+      
+      // 查找活跃的会议（非completed/failed/cancelled状态）
+      const activeMeeting = meetings.find(m =>
+        !['completed', 'failed', 'cancelled'].includes(m.status)
+      );
+      
+      if (activeMeeting) {
+        console.log('[ChatView] 发现活跃会议，自动重连:', activeMeeting.meeting_id);
+        
+        // 如果已经有连接，先关闭
+        if (eventSourceRef.current) {
+          eventSourceRef.current.close();
+        }
+        
+        // 重新连接到活跃会议
+        setStreaming(true);
+        reconnectToMeeting(activeMeeting.meeting_id);
+      } else {
+        console.log('[ChatView] 没有发现活跃会议');
+      }
+    } catch (err) {
+      console.error('[ChatView] 检查活跃会议失败:', err);
+    }
+  };
+
+  // 重连到会议
+  const reconnectToMeeting = (meetingId) => {
+    try {
+      // 使用会议流API重连
+      const eventSource = new EventSource(
+        `http://localhost:8007/api/meetings/${meetingId}/stream`
+      );
+      eventSourceRef.current = eventSource;
+
+      // 用于累积流式响应
+      const streamingMessages = {};
+      let stage1Results = [];
+      let stage2Results = [];
+      let stage3Result = null;
+      let stage4Result = null;
+
+      eventSource.addEventListener('stage1_progress', (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('Stage 1 进度:', data);
+          
+          // 更新stage1结果
+          const existingIndex = stage1Results.findIndex(r => r.model === data.model);
+          if (existingIndex >= 0) {
+            stage1Results[existingIndex] = data;
+          } else {
+            stage1Results.push(data);
+          }
+        } catch (err) {
+          console.error('解析stage1_progress失败:', err);
+        }
+      });
+
+      eventSource.addEventListener('stage1_complete', (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('Stage 1 完成:', data);
+          stage1Results = data.results || [];
+        } catch (err) {
+          console.error('解析stage1_complete失败:', err);
+        }
+      });
+
+      eventSource.addEventListener('stage2_progress', (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('Stage 2 进度:', data);
+          
+          const existingIndex = stage2Results.findIndex(r => r.model === data.model);
+          if (existingIndex >= 0) {
+            stage2Results[existingIndex] = data;
+          } else {
+            stage2Results.push(data);
+          }
+        } catch (err) {
+          console.error('解析stage2_progress失败:', err);
+        }
+      });
+
+      eventSource.addEventListener('stage2_complete', (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('Stage 2 完成:', data);
+          stage2Results = data.results || [];
+        } catch (err) {
+          console.error('解析stage2_complete失败:', err);
+        }
+      });
+
+      eventSource.addEventListener('stage3_complete', (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('Stage 3 完成:', data);
+          stage3Result = data;
+        } catch (err) {
+          console.error('解析stage3_complete失败:', err);
+        }
+      });
+
+      eventSource.addEventListener('stage4_complete', (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('Stage 4 完成:', data);
+          stage4Result = data;
+        } catch (err) {
+          console.error('解析stage4_complete失败:', err);
+        }
+      });
+
+      eventSource.addEventListener('complete', (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('会议完成:', data);
+          setStreaming(false);
+          eventSource.close();
+          eventSourceRef.current = null;
+          
+          // 重新加载对话以获取最新消息
+          loadConversation();
+        } catch (err) {
+          console.error('解析complete失败:', err);
+        }
+      });
+
+      eventSource.addEventListener('error', (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.error('会议错误:', data);
+          setError(data.error || '会议执行失败');
+          setStreaming(false);
+          eventSource.close();
+          eventSourceRef.current = null;
+        } catch (err) {
+          console.error('解析error失败:', err);
+        }
+      });
+
+      eventSource.addEventListener('heartbeat', (event) => {
+        // 心跳，保持连接
+        console.log('收到心跳');
+      });
+
+      eventSource.onerror = (err) => {
+        console.error('SSE 连接错误:', err);
+        setError('连接失败，请重试');
+        setStreaming(false);
+        eventSource.close();
+        eventSourceRef.current = null;
+      };
+    } catch (err) {
+      setError('重连会议失败: ' + err.message);
+      setStreaming(false);
+      console.error('重连会议失败:', err);
     }
   };
 

@@ -6,7 +6,216 @@
 const API_BASE = '/api';
 
 /**
- * 发送消息 (SSE)
+ * 启动新会议（后台运行）
+ * @param {string} convId - 对话 ID
+ * @param {string} content - 消息内容
+ * @param {string[]} models - 模型列表
+ * @param {Array} attachments - 附件列表
+ * @returns {Promise<Object>} 会议信息
+ */
+export async function startMeeting(convId, content, models, attachments = []) {
+  try {
+    const response = await fetch(`${API_BASE}/meetings/start`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        conv_id: convId,
+        content: content,
+        models: models,
+        attachments: attachments || []
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('启动会议失败:', error);
+    throw error;
+  }
+}
+
+/**
+ * 获取会议状态
+ * @param {string} meetingId - 会议 ID
+ * @returns {Promise<Object>} 会议状态
+ */
+export async function getMeetingStatus(meetingId) {
+  try {
+    const response = await fetch(`${API_BASE}/meetings/${meetingId}`);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('获取会议状态失败:', error);
+    throw error;
+  }
+}
+
+/**
+ * 订阅会议更新流
+ * @param {string} meetingId - 会议 ID
+ * @returns {Object} EventSource 兼容对象
+ */
+export function subscribeMeetingUpdates(meetingId) {
+  const url = `${API_BASE}/meetings/${meetingId}/stream`;
+  
+  // 创建一个模拟 EventSource 的对象
+  const eventSource = {
+    _listeners: {},
+    _controller: null,
+    
+    addEventListener(event, callback) {
+      if (!this._listeners[event]) {
+        this._listeners[event] = [];
+      }
+      this._listeners[event].push(callback);
+    },
+    
+    close() {
+      if (this._controller) {
+        this._controller.abort();
+        this._controller = null;
+      }
+    },
+    
+    _emit(event, data) {
+      const listeners = this._listeners[event] || [];
+      listeners.forEach(callback => {
+        callback({ data: data });
+      });
+    },
+    
+    _emitError(error) {
+      const listeners = this._listeners['error'] || [];
+      listeners.forEach(callback => {
+        callback(error);
+      });
+    }
+  };
+  
+  // 设置 onmessage 和 onerror 属性
+  Object.defineProperty(eventSource, 'onmessage', {
+    set(callback) {
+      this.addEventListener('message', callback);
+    }
+  });
+  
+  Object.defineProperty(eventSource, 'onerror', {
+    set(callback) {
+      this.addEventListener('error', callback);
+    }
+  });
+  
+  // 启动 fetch 请求
+  const controller = new AbortController();
+  eventSource._controller = controller;
+  
+  fetch(url, {
+    method: 'GET',
+    signal: controller.signal
+  })
+  .then(response => {
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    
+    function processText({ done, value }) {
+      if (done) {
+        return;
+      }
+      
+      buffer += decoder.decode(value, { stream: true });
+      
+      // 处理 SSE 格式: event: xxx\ndata: xxx\n\n
+      const messages = buffer.split('\n\n');
+      buffer = messages.pop() || ''; // 保留不完整的消息
+      
+      for (const message of messages) {
+        if (!message.trim()) continue;
+        
+        const lines = message.split('\n');
+        let eventType = 'message';
+        let data = '';
+        
+        for (const line of lines) {
+          if (line.startsWith('event:')) {
+            eventType = line.substring(6).trim();
+          } else if (line.startsWith('data:')) {
+            data = line.substring(5).trim();
+          }
+        }
+        
+        if (data) {
+          eventSource._emit(eventType, data);
+        }
+      }
+      
+      return reader.read().then(processText);
+    }
+    
+    return reader.read().then(processText);
+  })
+  .catch(error => {
+    if (error.name !== 'AbortError') {
+      console.error('SSE connection error:', error);
+      eventSource._emitError(error);
+    }
+  });
+  
+  return eventSource;
+}
+
+/**
+ * 取消会议
+ * @param {string} meetingId - 会议 ID
+ * @returns {Promise<Object>} 取消结果
+ */
+export async function cancelMeeting(meetingId) {
+  try {
+    const response = await fetch(`${API_BASE}/meetings/${meetingId}`, {
+      method: 'DELETE'
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('取消会议失败:', error);
+    throw error;
+  }
+}
+
+/**
+ * 列出对话的所有会议
+ * @param {string} convId - 对话 ID
+ * @returns {Promise<Array>} 会议列表
+ */
+export async function listConversationMeetings(convId) {
+  try {
+    const response = await fetch(`${API_BASE}/conversations/${convId}/meetings`);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const data = await response.json();
+    return data.meetings || [];
+  } catch (error) {
+    console.error('列出会议失败:', error);
+    throw error;
+  }
+}
+
+/**
+ * 发送消息 (SSE) - 旧版本，保持向后兼容
  * @param {string} convId - 对话 ID
  * @param {string} content - 消息内容
  * @param {string[]} models - 模型列表

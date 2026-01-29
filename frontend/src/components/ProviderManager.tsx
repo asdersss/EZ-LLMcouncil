@@ -68,6 +68,8 @@ function ProviderManager({ onClose, onRefresh }: ProviderManagerProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [editingProvider, setEditingProvider] = useState<Provider | null>(null);
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
   const [addedModels, setAddedModels] = useState<AddedModel[]>([]);
   const [availableModels, setAvailableModels] = useState<Model[]>([]);
@@ -83,6 +85,14 @@ function ProviderManager({ onClose, onRefresh }: ProviderManagerProps) {
 
   // 新供应商表单
   const [newProvider, setNewProvider] = useState({
+    name: '',
+    url: '',
+    api_key: '',
+    api_type: 'openai' as 'openai' | 'anthropic'
+  });
+
+  // 编辑供应商表单
+  const [editProvider, setEditProvider] = useState({
     name: '',
     url: '',
     api_key: '',
@@ -107,6 +117,58 @@ function ProviderManager({ onClose, onRefresh }: ProviderManagerProps) {
       console.error('加载供应商列表失败:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 打开编辑供应商弹窗
+  const handleOpenEditProvider = (provider: Provider) => {
+    setEditingProvider(provider);
+    setEditProvider({
+      name: provider.name,
+      url: provider.url,
+      api_key: '', // 不显示原密钥
+      api_type: provider.api_type
+    });
+    setShowEditForm(true);
+  };
+
+  // 编辑供应商
+  const handleUpdateProvider = async () => {
+    if (!editingProvider || !editProvider.url) {
+      setError('请填写API URL');
+      return;
+    }
+
+    try {
+      const updateData: any = {
+        url: editProvider.url,
+        api_type: editProvider.api_type
+      };
+
+      // 只有填写了新密钥才更新
+      if (editProvider.api_key) {
+        updateData.api_key = editProvider.api_key;
+      }
+
+      const response = await fetch(`http://localhost:8007/api/providers/${encodeURIComponent(editingProvider.name)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateData)
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.detail || '更新供应商失败');
+      }
+
+      setEditProvider({ name: '', url: '', api_key: '', api_type: 'openai' });
+      setEditingProvider(null);
+      setShowEditForm(false);
+      setError(null);
+      await loadProviders();
+    } catch (err: any) {
+      setError('更新供应商失败: ' + err.message);
+      console.error('更新供应商失败:', err);
     }
   };
 
@@ -436,14 +498,83 @@ function ProviderManager({ onClose, onRefresh }: ProviderManagerProps) {
   return (
     <div className="provider-manager-overlay" onClick={onClose}>
       <div className="provider-manager-wrapper" onClick={(e) => e.stopPropagation()}>
-        {/* 添加供应商弹窗 */}
-        {showAddForm && (
-        <div className="provider-overlay" onClick={() => setShowAddForm(false)}>
-          <div className="provider-popup" onClick={(e) => e.stopPropagation()}>
-            <div className="provider-popup-header">
-              <h3>添加供应商</h3>
-              <button className="close-btn" onClick={() => setShowAddForm(false)}>×</button>
+        {/* 编辑供应商弹窗 */}
+        {showEditForm && (
+          <div className="provider-overlay" onClick={() => setShowEditForm(false)}>
+            <div className="provider-popup" onClick={(e) => e.stopPropagation()}>
+              <div className="provider-popup-header">
+                <h3>编辑供应商</h3>
+                <button className="close-btn" onClick={() => setShowEditForm(false)}>×</button>
+              </div>
+              <div className="provider-popup-body">
+                <div className="form-group">
+                  <label>
+                    供应商名称
+                    <input
+                      type="text"
+                      value={editProvider.name}
+                      disabled
+                      style={{ background: '#f3f4f6', cursor: 'not-allowed' }}
+                    />
+                    <span style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px', display: 'block' }}>
+                      供应商名称不可修改
+                    </span>
+                  </label>
+                </div>
+                <div className="form-group">
+                  <label>
+                    API类型 <span className="required">*</span>
+                    <select
+                      value={editProvider.api_type}
+                      onChange={(e) => setEditProvider({ ...editProvider, api_type: e.target.value as 'openai' | 'anthropic' })}
+                    >
+                      <option value="openai">OpenAI</option>
+                      <option value="anthropic">Anthropic</option>
+                    </select>
+                  </label>
+                </div>
+                <div className="form-group">
+                  <label>
+                    API URL <span className="required">*</span>
+                    <input
+                      type="text"
+                      value={editProvider.url}
+                      onChange={(e) => setEditProvider({ ...editProvider, url: e.target.value })}
+                      placeholder="例如: https://api.openai.com/v1/chat/completions"
+                    />
+                  </label>
+                </div>
+                <div className="form-group">
+                  <label>
+                    API Key
+                    <input
+                      type="password"
+                      value={editProvider.api_key}
+                      onChange={(e) => setEditProvider({ ...editProvider, api_key: e.target.value })}
+                      placeholder="留空则不修改密钥"
+                    />
+                    <span style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px', display: 'block' }}>
+                      留空则保持原密钥不变
+                    </span>
+                  </label>
+                </div>
+              </div>
+              <div className="provider-popup-footer">
+                <button className="cancel-btn" onClick={() => setShowEditForm(false)}>取消</button>
+                <button className="add-btn" onClick={handleUpdateProvider}>保存</button>
+              </div>
             </div>
+          </div>
+        )}
+  
+        {/* 添加供应商弹窗 */}
+          {showAddForm && (
+          <div className="provider-overlay" onClick={() => setShowAddForm(false)}>
+            <div className="provider-popup" onClick={(e) => e.stopPropagation()}>
+              <div className="provider-popup-header">
+                <h3>添加供应商</h3>
+                <button className="close-btn" onClick={() => setShowAddForm(false)}>×</button>
+              </div>
             <div className="provider-popup-body">
               <div className="form-group">
                 <label>
@@ -677,16 +808,28 @@ function ProviderManager({ onClose, onRefresh }: ProviderManagerProps) {
                         <h4>{provider.name}</h4>
                         <span className="provider-type">{provider.api_type.toUpperCase()}</span>
                       </div>
-                      <button
-                        className="delete-provider-btn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteProvider(provider.name);
-                        }}
-                        title="删除供应商"
-                      >
-                        🗑️
-                      </button>
+                      <div className="provider-actions">
+                        <button
+                          className="edit-provider-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenEditProvider(provider);
+                          }}
+                          title="编辑供应商"
+                        >
+                          ✏️
+                        </button>
+                        <button
+                          className="delete-provider-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteProvider(provider.name);
+                          }}
+                          title="删除供应商"
+                        >
+                          🗑️
+                        </button>
+                      </div>
                     </div>
                   ))
                 )}

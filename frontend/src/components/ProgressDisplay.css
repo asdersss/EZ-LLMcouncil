@@ -1,0 +1,276 @@
+/* ProgressDisplay.css - 新的进度显示组件样式 */
+
+.progress-display-new {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* Stage 区域 */
+.progress-stage-new {
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+  padding: 1rem;
+  border-left: 4px solid var(--primary-color);
+  transition: all 0.3s ease;
+}
+
+/* 已完成的Stage样式 */
+.progress-stage-new.stage-completed {
+  opacity: 0.7;
+  border-left-color: var(--success-color);
+}
+
+.progress-stage-new.stage-completed:hover {
+  opacity: 1;
+}
+
+/* Stage 头部 */
+.progress-stage-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.progress-stage-icon {
+  font-size: 1.2rem;
+}
+
+.progress-stage-title {
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.progress-stage-count {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+/* Stage 项目列表 */
+.progress-stage-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* 单个进度项 */
+.progress-item-new {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background: var(--bg-primary);
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  transition: all 0.2s ease;
+}
+
+.progress-item-new:hover {
+  border-color: var(--primary-color);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transform: translateX(2px);
+}
+
+/* 错误状态的进度项 */
+.progress-item-new.status-error {
+  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.progress-item-new.status-error:hover {
+  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* 重试状态的进度项 */
+.progress-item-new.status-retrying {
+  border-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.05);
+  animation: pulse-retry-border 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-retry-border {
+  0%, 100% {
+    border-color: #f59e0b;
+  }
+  50% {
+    border-color: #fbbf24;
+  }
+}
+
+/* 执行中状态的进度项 */
+.progress-item-new.status-processing {
+  border-color: var(--primary-color);
+  background: rgba(59, 130, 246, 0.05);
+  animation: pulse-processing-border 2s ease-in-out infinite;
+}
+
+@keyframes pulse-processing-border {
+  0%, 100% {
+    border-color: var(--primary-color);
+  }
+  50% {
+    border-color: var(--primary-hover);
+  }
+}
+
+/* 完成状态的进度项 */
+.progress-item-new.status-completed {
+  opacity: 0.8;
+}
+
+.progress-item-new.status-completed:hover {
+  opacity: 1;
+}
+
+/* 模型名称 */
+.progress-item-model {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  flex-shrink: 0;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 状态区域 */
+.progress-item-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  justify-content: flex-end;
+}
+
+/* 状态图标 */
+.progress-status-icon {
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+/* 状态文本 */
+.progress-status-text {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* 错误状态文本 */
+.progress-item-new.status-error .progress-status-text {
+  color: #ef4444;
+}
+
+/* 重试状态文本 */
+.progress-item-new.status-retrying .progress-status-text {
+  color: #f59e0b;
+  animation: pulse-text 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-text {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/* 执行中状态文本 */
+.progress-item-new.status-processing .progress-status-text {
+  color: var(--primary-color);
+  animation: pulse-text 2s ease-in-out infinite;
+}
+
+/* 完成状态文本 */
+.progress-item-new.status-completed .progress-status-text {
+  color: var(--success-color);
+}
+
+/* 错误提示 */
+.progress-status-tooltip {
+  max-width: 200px;
+  font-size: 0.8rem;
+  color: #ef4444;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0.25rem 0.5rem;
+  background: rgba(239, 68, 68, 0.1);
+  border-radius: 4px;
+  cursor: help;
+}
+
+/* Stage 展开/收起按钮 */
+.progress-stage-toggle {
+  margin-top: 0.75rem;
+  display: flex;
+  justify-content: center;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.progress-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: var(--bg-primary);
+  border: 2px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.progress-toggle-btn:hover {
+  border-color: var(--primary-color);
+  background: rgba(59, 130, 246, 0.05);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.progress-toggle-btn:active {
+  transform: translateY(0);
+}
+
+.progress-toggle-btn .toggle-icon {
+  font-size: 0.75rem;
+  transition: transform 0.2s ease;
+}
+
+.progress-toggle-btn:hover .toggle-icon {
+  transform: scale(1.2);
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .progress-item-new {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+  
+  .progress-item-model {
+    max-width: 100%;
+  }
+  
+  .progress-item-status {
+    justify-content: flex-start;
+    width: 100%;
+  }
+  
+  .progress-status-tooltip {
+    max-width: 100%;
+  }
+}

@@ -105,7 +105,7 @@ def format_sse(event: str, data: dict) -> str:
 
 async def chat_stream_generator(request: ChatRequest, config: Dict[str, Any]):
     """
-    聊天流式生成器
+    聊天流式生成器 - 使用后台会议管理器
     
     Args:
         request: 聊天请求
@@ -150,223 +150,174 @@ async def chat_stream_generator(request: ChatRequest, config: Dict[str, Any]):
             }
             conversation["messages"].append(user_message)
             logger.info(f"添加新的用户消息")
-        
-        # 3. 准备模型配置和设置
-        # 从providers中构建model_configs字典
-        model_configs = {}
-        providers = config.get("providers", [])
-        for provider in providers:
-            provider_name = provider.get("name", "")
-            provider_models = provider.get("models", [])
             
-            for model in provider_models:
-                model_name = model.get("name", "")
-                full_model_name = f"{model_name}/{provider_name}"
+            # 立即保存对话（保存用户消息）
+            conversation["updated_at"] = get_iso_timestamp()
+            save_conversation(conv_id, conversation)
+            logger.info(f"用户消息已保存到对话: {conv_id}")
+        
+        # 3. 检查是否有进行中的会议
+        from council_manager import council_manager
+        
+        existing_meetings = await council_manager.list_meetings(conv_id=conv_id)
+        active_meeting = next((m for m in existing_meetings
+                               if m['status'] not in ['completed', 'failed', 'cancelled']), None)
+        
+        if active_meeting:
+            # 如果有活跃会议，重新连接它
+            meeting_id = active_meeting['meeting_id']
+            logger.info(f"重新连接到活跃会议: {meeting_id}")
+            
+            # 发送当前进度
+            meeting_data = await council_manager.get_meeting(meeting_id)
+            if meeting_data:
+                progress = meeting_data.get('progress', {})
                 
-                model_configs[full_model_name] = {
-                    "name": full_model_name,
-                    "display_name": model.get("display_name", model_name),
-                    "description": model.get("description", ""),
-                    "url": provider.get("url", ""),
-                    "api_key": provider.get("api_key", ""),
-                    "api_type": provider.get("api_type", "openai"),
-                    "provider": provider_name
-                }
+                # 发送已有的stage1结果
+                if progress.get('stage1_results'):
+                    for result in progress['stage1_results']:
+                        yield format_sse("stage1_progress", {
+                            "model": result.get("model"),
+                            "status": "completed" if not result.get("error") else "error",
+                            "response": result.get("response", ""),
+                            "error": result.get("error")
+                        })
+                    yield format_sse("stage1_complete", {"results": progress['stage1_results']})
+                
+                # 发送已有的stage2结果
+                if progress.get('stage2_results'):
+                    for result in progress['stage2_results']:
+                        yield format_sse("stage2_progress", result)
+                    yield format_sse("stage2_complete", {"results": progress['stage2_results']})
+                
+                # 发送已有的stage3结果
+                if progress.get('stage3_result'):
+                    yield format_sse("stage3_complete", progress['stage3_result'])
+                
+                # 发送已有的stage4结果
+                if progress.get('stage4_result'):
+                    yield format_sse("stage4_complete", progress['stage4_result'])
+            
+            # 订阅后续更新
+            queue = await council_manager.subscribe(meeting_id)
+        else:
+            # 创建新会议
+            logger.info(f"创建新会议: 对话={conv_id}")
         
-        chairman = config.get("chairman", "")
-        settings = config.get("settings", {})
-        temperature = settings.get("temperature", 0.7)
-        timeout = settings.get("timeout", 120)
-        max_retries = settings.get("max_retries", 3)
-        max_concurrent = settings.get("max_concurrent", 10)
+            # 准备附件数据
+            attachments = []
+            if request.attachments:
+                attachments = [att.model_dump() for att in request.attachments]
+            
+            # 创建新会议
+            meeting_id = await council_manager.create_meeting(
+                conv_id=conv_id,
+                content=request.content,
+                models=request.models,
+                attachments=attachments,
+                config=config
+            )
+            logger.info(f"新会议已创建: {meeting_id}")
+            
+            # 发送会议ID给前端
+            yield format_sse("meeting_created", {
+                "meeting_id": meeting_id,
+                "conv_id": conv_id
+            })
+            
+            # 订阅会议更新
+            queue = await council_manager.subscribe(meeting_id)
         
-        # 4. 提取历史消息
-        history = conversation["messages"]
+        # 4. 转发会议更新到SSE流
+        try:
+            while True:
+                try:
+                    # 等待会议更新，30秒超时发送心跳
+                    update = await asyncio.wait_for(queue.get(), timeout=30.0)
+                    
+                    event_type = update.get("type", "update")
+                    data = update.get("data", update)
+                    
+                    # 转发事件
+                    yield format_sse(event_type, data)
+                    
+                    # 如果会议完成或失败，退出循环
+                    if event_type in ["complete", "error"]:
+                        break
+                        
+                except asyncio.TimeoutError:
+                    # 发送心跳保持连接
+                    yield format_sse("heartbeat", {"message": "keep-alive"})
+                    continue
+                    
+        finally:
+            # 取消订阅
+            await council_manager.unsubscribe(meeting_id, queue)
         
-        # 5. 准备附件数据
-        attachments = None
-        if request.attachments:
-            attachments = [att.model_dump() for att in request.attachments]
+        # 5. 获取最终结果并保存
+        meeting_data = await council_manager.get_meeting(meeting_id)
+        if meeting_data:
+            progress = meeting_data.get('progress', {})
+            
+            stage1_results = progress.get('stage1_results', [])
+            stage2_results = progress.get('stage2_results', [])
+            stage3_result = progress.get('stage3_result', {})
+            stage4_result = progress.get('stage4_result', {})
         
-        # 6. Stage 1 开始
-        yield format_sse("stage1_start", {"message": "开始 Stage 1: 并行查询模型"})
-        
-        # 导入 council 模块并执行四阶段流程
-        from council_streaming import collect_responses_with_progress
-        from council import collect_scores, synthesize_final, calculate_final_ranking, build_context
-        
-        # 构建上下文
-        context = build_context(history[:-1], max_turns=3)  # 排除刚添加的用户消息
-        
-        # Stage 1: 收集响应 - 使用生成器方式实时返回进度
-        stage1_results = []
-        async for result in collect_responses_with_progress(
-            query=request.content,
-            context=context,
-            attachments=attachments,
-            models=request.models,
-            model_configs=model_configs,
-            temperature=temperature,
-            timeout=timeout,
-            max_retries=max_retries,
-            max_concurrent=max_concurrent
-        ):
-            # 检查是否是重试进度事件
-            if result.get("type") == "retry":
-                # 发送重试进度
-                yield format_sse("stage1_progress", {
-                    "model": result["model"],
-                    "status": "retrying",
-                    "current_retry": result["current_retry"],
-                    "max_retries": result["max_retries"]
-                })
-            else:
-                # 实时发送每个模型的响应进度
-                yield format_sse("stage1_progress", {
-                    "model": result["model"],
-                    "status": "completed" if not result.get("error") else "error",
-                    "response": result.get("response", ""),
-                    "error": result.get("error")
-                })
-                stage1_results.append(result)
-        
-        # Stage 1 完成
-        yield format_sse("stage1_complete", {"results": stage1_results})
-        
-        # 7. Stage 2 开始
-        yield format_sse("stage2_start", {"message": "开始 Stage 2: 匿名同行评审"})
-        
-        # Stage 2: 收集打分 - 使用生成器方式实时返回进度
-        from council import collect_scores_with_progress
-        
-        stage2_results = []
-        async for result in collect_scores_with_progress(
-            query=request.content,
-            stage1_results=stage1_results,
-            context=context,
-            models=request.models,
-            model_configs=model_configs,
-            temperature=temperature,
-            timeout=timeout,
-            max_retries=max_retries,
-            max_concurrent=max_concurrent
-        ):
-            # 检查是否是 label_mapping 消息
-            if result.get("type") == "label_mapping":
-                # 发送 label_to_model 映射
-                yield format_sse("stage2_label_mapping", {
-                    "label_to_model": result.get("label_to_model", {})
-                })
-            else:
-                # 发送每个模型的打分进度
-                yield format_sse("stage2_progress", {
-                    "model": result["model"],
-                    "status": "completed" if not result.get("error") else "error",
-                    "scores": result.get("scores", {}),
-                    "raw_text": result.get("raw_text", ""),
-                    "label_to_model": result.get("label_to_model", {}),
-                    "participated": result.get("participated"),
-                    "skip_reason": result.get("skip_reason"),
-                    "error": result.get("error")
-                })
-                stage2_results.append(result)
-        
-        # Stage 2 完成
-        yield format_sse("stage2_complete", {"results": stage2_results})
-        
-        # 8. Stage 3 开始
-        yield format_sse("stage3_start", {"message": "开始 Stage 3: 主席综合答案"})
-        
-        # 发送 Stage 3 进度 - 主席模型开始处理
-        yield format_sse("stage3_progress", {
-            "model": chairman,
-            "status": "processing"
-        })
-        
-        # Stage 3: 综合答案
-        stage3_result = await synthesize_final(
-            query=request.content,
-            stage1_results=stage1_results,
-            stage2_results=stage2_results,
-            context=context,
-            chairman_model=chairman,
-            model_configs=model_configs,
-            temperature=temperature,
-            timeout=timeout,
-            max_retries=max_retries
-        )
-        
-        # 发送 Stage 3 进度 - 主席模型完成
-        yield format_sse("stage3_progress", {
-            "model": chairman,
-            "status": "completed" if not stage3_result.get("error") else "error",
-            "error": stage3_result.get("error")
-        })
-        
-        # Stage 3 完成
-        yield format_sse("stage3_complete", stage3_result)
-        
-        # 8. Stage 4 开始
-        yield format_sse("stage4_start", {"message": "开始 Stage 4: 汇总打分和排名"})
-        
-        # 发送 Stage 4 进度 - 开始计算排名
-        yield format_sse("stage4_progress", {
-            "status": "processing",
-            "message": "正在计算排名..."
-        })
-        
-        # Stage 4: 汇总打分和排名
-        stage4_result = await calculate_final_ranking(
-            stage1_results=stage1_results,
-            stage2_results=stage2_results
-        )
-        
-        # 发送 Stage 4 进度 - 完成
-        yield format_sse("stage4_progress", {
-            "status": "completed" if not stage4_result.get("error") else "error",
-            "error": stage4_result.get("error")
-        })
-        
-        # Stage 4 完成
-        yield format_sse("stage4_complete", stage4_result)
-        
-        # 9. 保存助手消息
-        assistant_message = {
-            "role": "assistant",
-            "stage1": stage1_results,
-            "stage2": stage2_results,
-            "stage3": stage3_result,
-            "stage4": stage4_result,
-            "timestamp": get_iso_timestamp()
-        }
-        conversation["messages"].append(assistant_message)
-        
-        # 10. 如果是第一轮对话，使用AI生成标题
-        if len(conversation["messages"]) == 2:  # 一条用户消息 + 一条助手消息
-            try:
-                ai_title = await generate_ai_title(
-                    query=request.content,
-                    response=stage3_result.get("response", ""),
-                    chairman_model=chairman,
-                    model_configs=model_configs
-                )
-                conversation["title"] = ai_title
-                logger.info(f"AI生成对话标题: {ai_title}")
-            except Exception as e:
-                logger.warning(f"AI生成标题失败，使用默认标题: {e}")
-        
-        # 11. 更新对话时间戳
-        conversation["updated_at"] = get_iso_timestamp()
-        
-        # 12. 保存对话
-        save_conversation(conv_id, conversation)
-        
-        # 13. 发送完成事件（包含更新后的标题）
-        yield format_sse("complete", {
-            "conv_id": conv_id,
-            "title": conversation.get("title", "新对话"),
-            "message": "对话完成"
-        })
+            # 6. 保存助手消息
+            assistant_message = {
+                "role": "assistant",
+                "stage1": stage1_results,
+                "stage2": stage2_results,
+                "stage3": stage3_result,
+                "stage4": stage4_result,
+                "timestamp": get_iso_timestamp()
+            }
+            conversation["messages"].append(assistant_message)
+            
+            # 7. 如果是第一轮对话，使用AI生成标题
+            if len(conversation["messages"]) == 2:  # 一条用户消息 + 一条助手消息
+                try:
+                    # 从config获取chairman和构建model_configs
+                    chairman = config.get("chairman", "")
+                    model_configs = {}
+                    providers = config.get("providers", [])
+                    for provider in providers:
+                        provider_name = provider.get("name", "")
+                        provider_models = provider.get("models", [])
+                        for model in provider_models:
+                            model_name = model.get("name", "")
+                            full_model_name = f"{model_name}/{provider_name}"
+                            model_configs[full_model_name] = {
+                                "name": full_model_name,
+                                "url": provider.get("url", ""),
+                                "api_key": provider.get("api_key", ""),
+                                "api_type": provider.get("api_type", "openai"),
+                            }
+                    
+                    ai_title = await generate_ai_title(
+                        query=request.content,
+                        response=stage3_result.get("response", ""),
+                        chairman_model=chairman,
+                        model_configs=model_configs
+                    )
+                    conversation["title"] = ai_title
+                    logger.info(f"AI生成对话标题: {ai_title}")
+                except Exception as e:
+                    logger.warning(f"AI生成标题失败，使用默认标题: {e}")
+            
+            # 8. 更新对话时间戳
+            conversation["updated_at"] = get_iso_timestamp()
+            
+            # 9. 保存对话
+            save_conversation(conv_id, conversation)
+            
+            # 10. 发送完成事件（包含更新后的标题）
+            yield format_sse("complete", {
+                "conv_id": conv_id,
+                "title": conversation.get("title", "新对话"),
+                "message": "对话完成"
+            })
         
     except Exception as e:
         logger.error(f"聊天流处理错误: {e}", exc_info=True)
@@ -1890,6 +1841,235 @@ async def delete_model_from_provider_endpoint(provider_name: str, model_name: st
         raise
     except Exception as e:
         logger.error(f"删除模型错误: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+# ==================== 会议管理 API ====================
+
+from council_manager import council_manager
+import asyncio
+
+
+@app.post("/api/meetings/start")
+async def start_meeting(request: ChatRequest):
+    """
+    启动新会议（后台运行）
+    
+    Args:
+        request: 聊天请求
+        
+    Returns:
+        会议ID和初始状态
+    """
+    try:
+        # 加载配置
+        config = load_config()
+        
+        # 从providers中构建可用模型列表
+        available_models = set()
+        providers = config.get("providers", [])
+        for provider in providers:
+            provider_name = provider.get("name", "")
+            models = provider.get("models", [])
+            for model in models:
+                model_name = model.get("name", "")
+                full_model_name = f"{model_name}/{provider_name}"
+                available_models.add(full_model_name)
+        
+        # 验证模型是否存在
+        for model in request.models:
+            if model not in available_models:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"模型 '{model}' 不存在"
+                )
+        
+        # 准备附件数据
+        attachments = []
+        if request.attachments:
+            attachments = [att.model_dump() for att in request.attachments]
+        
+        # 创建会议
+        meeting_id = await council_manager.create_meeting(
+            conv_id=request.conv_id,
+            content=request.content,
+            models=request.models,
+            attachments=attachments,
+            config=config
+        )
+        
+        logger.info(f"会议已启动: {meeting_id}, 对话: {request.conv_id}")
+        
+        return {
+            "meeting_id": meeting_id,
+            "conv_id": request.conv_id,
+            "message": "会议已在后台启动"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"启动会议错误: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/meetings/{meeting_id}")
+async def get_meeting_status(meeting_id: str):
+    """
+    获取会议状态
+    
+    Args:
+        meeting_id: 会议ID
+        
+    Returns:
+        会议状态和进度
+    """
+    try:
+        meeting = await council_manager.get_meeting(meeting_id)
+        
+        if not meeting:
+            raise HTTPException(status_code=404, detail="会议不存在")
+        
+        return meeting
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取会议状态错误: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.get("/api/meetings/{meeting_id}/stream")
+async def stream_meeting_updates(meeting_id: str):
+    """
+    订阅会议更新流（SSE）
+    
+    Args:
+        meeting_id: 会议ID
+        
+    Returns:
+        SSE 流式响应
+    """
+    async def event_generator():
+        try:
+            # 先获取会议当前状态，发送历史进度
+            meeting_data = await council_manager.get_meeting(meeting_id)
+            if meeting_data:
+                progress = meeting_data.get('progress', {})
+                
+                # 发送已有的stage1结果
+                if progress.get('stage1_results'):
+                    for result in progress['stage1_results']:
+                        yield format_sse("stage1_progress", {
+                            "model": result.get("model"),
+                            "status": "completed" if not result.get("error") else "error",
+                            "response": result.get("response", ""),
+                            "error": result.get("error")
+                        })
+                    yield format_sse("stage1_complete", {"results": progress['stage1_results']})
+                
+                # 发送已有的stage2结果
+                if progress.get('stage2_results'):
+                    for result in progress['stage2_results']:
+                        yield format_sse("stage2_progress", result)
+                    yield format_sse("stage2_complete", {"results": progress['stage2_results']})
+                
+                # 发送已有的stage3结果
+                if progress.get('stage3_result'):
+                    yield format_sse("stage3_complete", progress['stage3_result'])
+                
+                # 发送已有的stage4结果
+                if progress.get('stage4_result'):
+                    yield format_sse("stage4_complete", progress['stage4_result'])
+            
+            # 订阅会议更新
+            queue = await council_manager.subscribe(meeting_id)
+            
+            try:
+                while True:
+                    # 从队列获取更新
+                    try:
+                        update = await asyncio.wait_for(queue.get(), timeout=30.0)
+                        
+                        # 根据更新类型发送不同的事件
+                        event_type = update.get("type", "update")
+                        yield format_sse(event_type, update.get("data", update))
+                        
+                        # 如果会议完成或失败，结束流
+                        if event_type in ["complete", "error"]:
+                            break
+                            
+                    except asyncio.TimeoutError:
+                        # 发送心跳保持连接
+                        yield format_sse("heartbeat", {"message": "keep-alive"})
+                        
+            finally:
+                # 取消订阅
+                await council_manager.unsubscribe(meeting_id, queue)
+                
+        except Exception as e:
+            logger.error(f"会议流错误: {e}", exc_info=True)
+            yield format_sse("error", {"error": str(e)})
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
+
+
+@app.delete("/api/meetings/{meeting_id}")
+async def cancel_meeting(meeting_id: str):
+    """
+    取消会议
+    
+    Args:
+        meeting_id: 会议ID
+        
+    Returns:
+        取消结果
+    """
+    try:
+        await council_manager.cancel_meeting(meeting_id)
+        
+        logger.info(f"会议已取消: {meeting_id}")
+        
+        return {
+            "message": "会议已取消",
+            "meeting_id": meeting_id
+        }
+        
+    except Exception as e:
+        logger.error(f"取消会议错误: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.get("/api/conversations/{conv_id}/meetings")
+async def list_conversation_meetings(conv_id: str):
+    """
+    列出对话的所有会议
+    
+    Args:
+        conv_id: 对话ID
+        
+    Returns:
+        会议列表
+    """
+    try:
+        meetings = await council_manager.list_meetings(conv_id=conv_id)
+        
+        return {
+            "conv_id": conv_id,
+            "meetings": meetings,
+            "total": len(meetings)
+        }
+        
+    except Exception as e:
+        logger.error(f"列出会议错误: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
