@@ -1,7 +1,7 @@
 .model-selector {
   display: flex;
   flex-direction: column;
-  background-color: var(--surface-color);
+  background-color: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   overflow: hidden;
@@ -13,7 +13,7 @@
   justify-content: space-between;
   padding: var(--spacing-md) var(--spacing-lg);
   border-bottom: 1px solid var(--border-color);
-  background-color: var(--background-color);
+  background-color: var(--bg-secondary);
 }
 
 .model-selector-header h3 {
@@ -102,7 +102,7 @@
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   overflow: hidden;
-  background-color: var(--background-color);
+  background-color: var(--bg-secondary);
 }
 
 .provider-group-header {
@@ -110,7 +110,7 @@
   align-items: center;
   justify-content: space-between;
   padding: var(--spacing-sm) var(--spacing-md);
-  background-color: var(--surface-color);
+  background-color: var(--bg-tertiary);
   border-bottom: 1px solid var(--border-color);
 }
 
@@ -199,12 +199,12 @@
   border-radius: var(--radius-md);
   cursor: pointer;
   transition: all 0.2s ease;
-  background-color: white;
+  background-color: var(--surface-color);
   border: 1px solid var(--border-color);
 }
 
 .model-item:hover {
-  background-color: var(--surface-color);
+  background-color: var(--bg-tertiary);
   box-shadow: var(--shadow-sm);
 }
 
@@ -296,7 +296,7 @@
 .model-selector-footer {
   padding: var(--spacing-md) var(--spacing-lg);
   border-top: 1px solid var(--border-color);
-  background-color: var(--background-color);
+  background-color: var(--bg-secondary);
   display: flex;
   justify-content: space-between;
   align-items: center;

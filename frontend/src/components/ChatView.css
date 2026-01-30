@@ -3,58 +3,28 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background-color: var(--background-color);
+  background-color: var(--bg-primary);
+  position: relative;
 }
 
 .chat-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: var(--spacing-lg);
+  justify-content: center;
+  padding: var(--spacing-md);
   border-bottom: 1px solid var(--border-color);
-  background-color: var(--surface-color);
-  gap: var(--spacing-lg);
+  background-color: var(--bg-secondary);
+  box-shadow: var(--shadow-sm);
+  z-index: 10;
 }
 
 .chat-header h2 {
   margin: 0;
-  font-size: var(--font-size-xl);
-  color: var(--text-color);
-  flex: 1;
-}
-
-.header-actions {
-  display: flex;
-  gap: var(--spacing-sm);
-  align-items: center;
-}
-
-.context-manager-trigger,
-.model-selector-trigger {
-  padding: var(--spacing-sm) var(--spacing-lg);
-  font-size: var(--font-size-md);
-  font-weight: 500;
-  background-color: var(--primary-color);
-  color: white;
-  border: none;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
-  white-space: nowrap;
-}
-
-.context-manager-trigger:hover,
-.model-selector-trigger:hover {
-  background-color: #1d4ed8;
-  box-shadow: var(--shadow-md);
-}
-
-.context-manager-trigger:active,
-.model-selector-trigger:active {
-  transform: scale(0.98);
+  font-size: 1.5rem;
+  color: var(--text-primary);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-shadow: 0 0 10px rgba(99, 102, 241, 0.5);
 }
 
 .model-selector-overlay {
@@ -72,16 +42,16 @@
 }
 
 .model-selector-popup {
-  background-color: #ffffff;
+  background-color: var(--bg-secondary);
   border-radius: var(--radius-lg);
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--shadow-lg);
   max-width: 625px;
   width: 90%;
   max-height: 80vh;
   display: flex;
   flex-direction: column;
   animation: slideUp 0.3s ease;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border-color);
 }
 
 @keyframes slideUp {
@@ -149,6 +119,9 @@
   padding: var(--spacing-lg);
   display: flex;
   flex-direction: column;
+  background-image: radial-gradient(circle at 50% 50%, rgba(99, 102, 241, 0.05) 0%, transparent 50%);
+  transition: height 0.3s ease;
+  min-height: 0; /* 关键：允许 flex item 缩小到内容以下，确保滚动条正常工作 */
 }
 
 .loading-state,
@@ -159,24 +132,27 @@
   align-items: center;
   justify-content: center;
   gap: var(--spacing-md);
-  color: var(--secondary-color);
+  color: var(--text-secondary);
 }
 
 .empty-state h3 {
   margin: 0;
-  font-size: var(--font-size-xl);
-  color: var(--text-color);
+  font-size: 1.5rem;
+  color: var(--text-primary);
 }
 
 .empty-state p {
   margin: 0;
-  font-size: var(--font-size-md);
+  font-size: 1rem;
 }
 
 .messages-list {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-md);
+  gap: var(--spacing-lg);
+  max-width: 1000px;
+  margin: 0 auto;
+  width: 100%;
 }
 
 .message {
@@ -185,9 +161,10 @@
   gap: var(--spacing-sm);
   padding: var(--spacing-md);
   border-radius: var(--radius-lg);
-  background-color: var(--surface-color);
+  background-color: var(--bg-secondary);
   border: 1px solid var(--border-color);
   animation: fadeIn 0.3s ease;
+  box-shadow: var(--shadow-md);
 }
 
 @keyframes fadeIn {
@@ -202,22 +179,24 @@
 }
 
 .message.user {
-  background-color: var(--primary-color);
-  color: white;
+  background-color: var(--bg-tertiary);
   border-color: var(--primary-color);
   align-self: flex-end;
-  max-width: 80%;
+  max-width: 85%;
+  border-bottom-right-radius: 2px;
 }
 
 .message.assistant {
-  background-color: var(--surface-color);
+  background-color: var(--bg-secondary);
   align-self: flex-start;
-  max-width: 80%;
+  max-width: 95%;
+  border-bottom-left-radius: 2px;
+  border-left: 3px solid var(--primary-color);
 }
 
 .message.streaming {
   border-color: var(--primary-color);
-  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+  box-shadow: var(--shadow-glow);
 }
 
 .message-header {
@@ -302,12 +281,82 @@
 
 .chat-footer {
   border-top: 1px solid var(--border-color);
-  background-color: var(--surface-color);
+  background-color: var(--bg-secondary);
+  padding: var(--spacing-md);
+  z-index: 10;
+  position: relative;
+  flex-shrink: 0;
+  max-height: 80vh;
+  transition: max-height 0.3s ease, padding 0.3s ease;
+  overflow: visible;
+}
+
+.chat-footer.hidden {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.chat-footer .footer-content {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+.chat-footer.hidden .footer-content {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.footer-toggle-btn {
+  position: absolute;
+  top: -16px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  width: 32px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 10px;
+  z-index: 11;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.footer-toggle-btn:hover {
+  background-color: var(--bg-tertiary);
+  color: var(--primary-color);
+}
+
+.footer-toggle-btn:active {
+  transform: translateX(-50%);
 }
 
 .stop-btn {
-  margin: var(--spacing-md);
-  width: calc(100% - var(--spacing-lg) * 2);
+  margin: 0 auto var(--spacing-md) auto;
+  display: block;
+  width: fit-content;
+  background-color: var(--error-color);
+  color: white;
+  border: none;
+  padding: var(--spacing-sm) var(--spacing-lg);
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.stop-btn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
 }
 
 /* 模型状态面板 */

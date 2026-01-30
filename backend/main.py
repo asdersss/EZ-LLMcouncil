@@ -1219,7 +1219,7 @@ def extract_file_content_with_mineru(file_path: str, filename: str) -> Tuple[str
                         total = progress.get("total_pages", 0)
                         logger.info(f"MinerU解析进度: {extracted}/{total}")
                     else:
-                        logger.info(f"MinerU状态: {state}")
+                        logger.info(f"MinerU状态: {state}, 详细信息: {json.dumps(result, ensure_ascii=False)}")
                     
                     time.sleep(poll_interval)
                 else:

@@ -1,95 +1,70 @@
 .input-area {
-  border-top: 1px solid var(--border-color);
-  background-color: var(--surface-color);
-  padding: var(--spacing-md);
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-sm);
+  padding: 0;
+  background: transparent;
+  max-width: 1000px;
+  margin: 0 auto;
+  position: relative;
 }
 
 .input-error {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--spacing-sm) var(--spacing-md);
-  background-color: var(--error-color);
-  color: white;
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  margin-bottom: 0.5rem;
+  padding: 0.5rem;
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--error-color);
+  border: 1px solid var(--error-color);
   border-radius: var(--radius-md);
-  font-size: var(--font-size-sm);
-  animation: slideDown 0.3s ease;
-}
-
-@keyframes slideDown {
-  from {
-    opacity: 0;
-    transform: translateY(-10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  font-size: 0.875rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  animation: slideDown 0.2s ease;
+  z-index: 10;
+  backdrop-filter: blur(4px);
+  background-color: rgba(30, 41, 59, 0.9);
+  transform-origin: bottom center;
 }
 
 .error-close {
   background: none;
   border: none;
-  color: white;
-  font-size: 20px;
-  line-height: 1;
+  color: var(--error-color);
+  font-size: 1.25rem;
   cursor: pointer;
-  padding: 0;
-  width: 20px;
-  height: 20px;
-}
-
-.error-close:hover {
-  opacity: 0.8;
+  padding: 0 0.25rem;
 }
 
 .attachments-list {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-sm);
-  background-color: var(--background-color);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-color);
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
 }
 
 .attachment-item {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-xs) var(--spacing-sm);
-  background-color: var(--surface-color);
+  gap: 0.5rem;
+  padding: 0.25rem 0.75rem;
+  background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  font-size: var(--font-size-sm);
-  transition: all 0.2s ease;
-}
-
-.attachment-item:hover {
-  box-shadow: var(--shadow-sm);
-}
-
-.attachment-name {
-  max-width: 200px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  color: var(--text-primary);
 }
 
 .attachment-remove {
   background: none;
   border: none;
-  color: var(--secondary-color);
-  font-size: 16px;
-  line-height: 1;
+  color: var(--text-secondary);
   cursor: pointer;
   padding: 0;
-  width: 16px;
-  height: 16px;
-  transition: color 0.2s ease;
+  font-size: 1rem;
+  line-height: 1;
+  transition: color 0.2s;
 }
 
 .attachment-remove:hover {
@@ -98,96 +73,114 @@
 
 .input-container {
   display: flex;
-  gap: var(--spacing-sm);
-  align-items: flex-end;
+  flex-direction: column;
+  gap: 0.5rem;
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 0.75rem;
+  transition: all 0.2s;
+  box-shadow: var(--shadow-sm);
+}
+
+.input-container:focus-within {
+  border-color: var(--primary-color);
+  box-shadow: var(--shadow-glow);
 }
 
 .message-input {
-  flex: 1;
-  min-height: 44px;
-  max-height: 200px;
-  padding: var(--spacing-sm) var(--spacing-md);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  background-color: var(--background-color);
-  color: var(--text-color);
-  font-family: var(--font-family);
-  font-size: var(--font-size-md);
+  width: 100%;
+  border: none;
+  background: transparent;
   resize: none;
-  overflow-y: auto;
-  transition: border-color 0.2s ease;
+  padding: 0.5rem;
+  max-height: 200px;
+  min-height: 60px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  font-size: 1rem;
 }
 
 .message-input:focus {
   outline: none;
-  border-color: var(--primary-color);
-}
-
-.message-input:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.message-input::placeholder {
-  color: var(--secondary-color);
+  box-shadow: none;
 }
 
 .input-actions {
   display: flex;
-  gap: var(--spacing-sm);
+  gap: 0.5rem;
   align-items: center;
+  justify-content: space-between;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border-color);
 }
 
-/* 输入区域的文件管理按钮和上传附件按钮 - 统一样式 */
-.input-area .input-actions .file-manager-btn,
-.input-area .input-actions .attach-btn {
-  width: 44px !important;
-  height: 44px !important;
-  min-width: 44px !important;
-  min-height: 44px !important;
-  padding: 0 !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  border: 1px solid var(--border-color) !important;
-  border-radius: var(--radius-md) !important;
-  background-color: var(--surface-color) !important;
-  color: var(--text-color) !important;
-  font-size: 20px !important;
-  line-height: 1 !important;
-  cursor: pointer !important;
-  transition: all 0.2s ease !important;
-  flex-shrink: 0 !important;
+.action-btn {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  padding: 0.5rem 1rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
 }
 
-.input-area .input-actions .file-manager-btn:hover:not(:disabled),
-.input-area .input-actions .attach-btn:hover:not(:disabled) {
-  background-color: var(--primary-color) !important;
-  border-color: var(--primary-color) !important;
-  transform: scale(1.05) !important;
+.action-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-color: var(--text-secondary);
 }
 
-.input-area .input-actions .file-manager-btn:active:not(:disabled),
-.input-area .input-actions .attach-btn:active:not(:disabled) {
-  transform: scale(0.95) !important;
-}
-
-.input-area .input-actions .file-manager-btn:disabled,
-.input-area .input-actions .attach-btn:disabled {
-  opacity: 0.5 !important;
-  cursor: not-allowed !important;
+.action-btn .count {
+  background: var(--primary-color);
+  color: white;
+  padding: 0.1rem 0.4rem;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: bold;
 }
 
 .send-btn {
-  height: 44px;
-  padding: 0 var(--spacing-lg);
-  font-weight: 500;
-  white-space: nowrap;
+  padding: 0.5rem 1.5rem;
+  font-weight: 600;
+  background: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-left: auto;
+}
+
+.send-btn:hover {
+  background: var(--primary-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
 }
 
 .send-btn:disabled {
-  opacity: 0.5;
+  background: var(--bg-tertiary);
+  color: var(--text-tertiary);
   cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.loading {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border-color);
+  border-top-color: var(--primary-color);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 /* 响应式设计 */

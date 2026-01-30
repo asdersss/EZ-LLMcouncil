@@ -224,9 +224,9 @@
   gap: 0.5rem;
   padding: 0.5rem 1rem;
   background: var(--bg-primary);
-  border: 2px solid var(--border-color);
-  border-radius: 6px;
-  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
   font-size: 0.85rem;
   font-weight: 500;
   cursor: pointer;
@@ -235,22 +235,12 @@
 
 .progress-toggle-btn:hover {
   border-color: var(--primary-color);
-  background: rgba(59, 130, 246, 0.05);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-}
-
-.progress-toggle-btn:active {
-  transform: translateY(0);
+  color: var(--primary-color);
+  background: var(--bg-secondary);
 }
 
 .progress-toggle-btn .toggle-icon {
   font-size: 0.75rem;
-  transition: transform 0.2s ease;
-}
-
-.progress-toggle-btn:hover .toggle-icon {
-  transform: scale(1.2);
 }
 
 /* 响应式设计 */

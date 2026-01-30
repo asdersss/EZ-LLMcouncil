@@ -290,18 +290,26 @@
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
 }
 
-.delete-btn {
+.file-delete-btn {
   background: transparent;
   color: var(--text-secondary);
-  border: 1px solid transparent;
+  border: none;
+  font-size: 1.2rem;
+  padding: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  position: relative;
+  top: 0px;
 }
 
-.delete-btn:hover {
+.file-delete-btn:hover {
   background: rgba(239, 68, 68, 0.1);
   color: var(--error-color);
-  border-color: var(--error-color);
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.2);
+  transform: scale(1.1);
 }
 
 .file-manager-footer {

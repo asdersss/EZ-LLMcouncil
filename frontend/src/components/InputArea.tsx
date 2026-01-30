@@ -9,6 +9,10 @@ import './InputArea.css';
 interface InputAreaProps {
   onSendMessage: (message: string, attachments: any[]) => void;
   disabled: boolean;
+  onOpenContextManager: () => void;
+  onOpenModelSelector: () => void;
+  onOpenFileManager: () => void;
+  selectedModelCount: number;
 }
 
 /**
@@ -24,7 +28,14 @@ interface Attachment {
  * InputArea 组件
  * 提供消息输入、附件上传和发送功能
  */
-function InputArea({ onSendMessage, disabled }: InputAreaProps) {
+function InputArea({
+  onSendMessage,
+  disabled,
+  onOpenContextManager,
+  onOpenModelSelector,
+  onOpenFileManager,
+  selectedModelCount
+}: InputAreaProps) {
   const [message, setMessage] = useState<string>('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [uploading, setUploading] = useState<boolean>(false);
@@ -38,7 +49,21 @@ function InputArea({ onSendMessage, disabled }: InputAreaProps) {
   // 加载MinerU配置
   useEffect(() => {
     loadMinerUConfig();
-  }, []);
+
+    // 监听文件选择事件
+    const handleFileSelected = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail) {
+        handleSelectFromManager(customEvent.detail);
+      }
+    };
+
+    window.addEventListener('fileSelected', handleFileSelected);
+
+    return () => {
+      window.removeEventListener('fileSelected', handleFileSelected);
+    };
+  }, [attachments]); // 添加 attachments 依赖，确保 handleSelectFromManager 能访问到最新的 attachments
 
   const loadMinerUConfig = async () => {
     try {
@@ -265,25 +290,39 @@ function InputArea({ onSendMessage, disabled }: InputAreaProps) {
           />
           
           <button
-            className="file-manager-btn"
-            onClick={() => setShowFileManager(true)}
-            disabled={disabled || uploading}
-            title="文件管理"
-          >
-            📁
-          </button>
-
-          <button
-            className="attach-btn"
+            className="action-btn attach-btn"
             onClick={handleAttachClick}
             disabled={disabled || uploading}
             title="上传附件"
           >
-            {uploading ? (
-              <div className="loading"></div>
-            ) : (
-              '📎'
-            )}
+            {uploading ? <div className="loading"></div> : '📎'}
+          </button>
+
+          <button
+            className="action-btn attach-btn"
+            onClick={onOpenFileManager}
+            disabled={disabled}
+            title="从文件管理选择"
+          >
+            📂
+          </button>
+
+          <button
+            className="action-btn context-btn"
+            onClick={onOpenContextManager}
+            disabled={disabled}
+            title="上下文管理"
+          >
+            📚
+          </button>
+
+          <button
+            className="action-btn model-btn"
+            onClick={onOpenModelSelector}
+            disabled={disabled}
+            title={`选择模型 (${selectedModelCount})`}
+          >
+            🤖 <span className="count">{selectedModelCount}</span>
           </button>
 
           <button

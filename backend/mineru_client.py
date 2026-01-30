@@ -12,6 +12,8 @@ import os
 import logging
 from typing import Dict, Any, Optional, Tuple, List
 from pathlib import Path
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 logger = logging.getLogger(__name__)
 
@@ -217,8 +219,25 @@ class MinerUClient:
         try:
             logger.info(f"下载结果文件: {zip_url}")
             
+            # 配置重试策略
+            retry_strategy = Retry(
+                total=5,  # 总重试次数
+                backoff_factor=1,  # 重试间隔因子 (1s, 2s, 4s, 8s, 16s)
+                status_forcelist=[429, 500, 502, 503, 504],
+                allowed_methods=["HEAD", "GET", "OPTIONS"]
+            )
+            adapter = HTTPAdapter(max_retries=retry_strategy)
+            session = requests.Session()
+            session.mount("https://", adapter)
+            session.mount("http://", adapter)
+            
             # 下载ZIP文件
-            response = requests.get(zip_url, timeout=60)
+            try:
+                response = session.get(zip_url, timeout=60)
+            except requests.exceptions.SSLError:
+                # 如果SSL失败，尝试禁用验证重试一次（针对某些CDN配置问题）
+                logger.warning("SSL验证失败，尝试禁用验证重试...")
+                response = session.get(zip_url, timeout=60, verify=False)
             
             if response.status_code != 200:
                 return None, f"下载失败: HTTP {response.status_code}"

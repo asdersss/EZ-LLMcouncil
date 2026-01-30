@@ -288,11 +288,11 @@ function FileManager({ onClose, onSelectFile }: FileManagerProps) {
                       ⬇️ 下载
                     </button>
                     <button
-                      className="action-btn delete-btn"
+                      className="file-delete-btn"
                       onClick={() => handleDelete(file)}
                       title="删除文件"
                     >
-                      🗑️ 删除
+                      🗑️
                     </button>
                   </div>
                 </div>

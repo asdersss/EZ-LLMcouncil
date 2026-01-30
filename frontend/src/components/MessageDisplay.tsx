@@ -189,6 +189,49 @@ function UserMessage({
     }
   };
 
+  // 从文件管理器选择文件
+  const handleSelectFromManager = (file: any) => {
+    // 将文件添加到附件列表
+    setEditAttachments([...editAttachments, {
+      name: file.filename,
+      content: file.content,
+      type: file.type
+    }]);
+  };
+
+  // 监听文件选择事件
+  useEffect(() => {
+    if (!isEditing) return;
+
+    const handleFileSelected = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail) {
+        handleSelectFromManager(customEvent.detail);
+      }
+    };
+
+    window.addEventListener('fileSelected', handleFileSelected);
+
+    return () => {
+      window.removeEventListener('fileSelected', handleFileSelected);
+    };
+  }, [isEditing, editAttachments]);
+
+  // 打开文件管理器
+  const handleOpenFileManager = () => {
+    // 触发一个自定义事件来打开文件管理器
+    // 这里我们需要一种方式通知 App 组件打开文件管理器
+    // 由于 MessageDisplay 组件层级较深，且没有直接传递打开文件管理器的回调
+    // 我们可以使用自定义事件或者修改组件 props
+    // 为了保持一致性，我们应该修改 MessageDisplayProps，但为了快速实现，我们先尝试自定义事件
+    // 或者更好的方式是，我们在 App.tsx 中已经传递了 onOpenFileManager 给 ChatInterface
+    // 我们应该将这个回调一直传递下来
+    
+    // 既然用户要求新增按钮，我们假设可以通过某种方式打开
+    // 这里我们分发一个全局事件 'openFileManager'，需要在 App.tsx 中监听
+    window.dispatchEvent(new CustomEvent('openFileManager'));
+  };
+
   return (
     <div className="message user-message">
       <div className="message-header">
@@ -276,6 +319,15 @@ function UserMessage({
               style={{ marginRight: '10px', padding: '8px 12px', cursor: uploading ? 'not-allowed' : 'pointer' }}
             >
               {uploading ? '⏳' : '📎'}
+            </button>
+            <button
+              className="attach-btn"
+              onClick={handleOpenFileManager}
+              disabled={uploading}
+              title="从文件管理选择"
+              style={{ marginRight: '10px', padding: '8px 12px', cursor: uploading ? 'not-allowed' : 'pointer' }}
+            >
+              📂
             </button>
             <button className="save-edit-btn" onClick={handleSaveEdit} disabled={uploading}>
               ✓ 保存并重新生成
@@ -412,7 +464,7 @@ function Stage1Display({ results }: { results: Stage1Result[] }) {
  */
 function Stage2Display({ results }: { results: Stage2Result[] }) {
   const [selectedModel, setSelectedModel] = useState<string>(results[0]?.model || '');
-  const [viewMode, setViewMode] = useState<'given' | 'received'>('given'); // 'given' = 当前AI给出的评价, 'received' = 其他AI给当前AI的评价
+  const [viewMode, setViewMode] = useState<'given' | 'received' | 'comment'>('given'); // 'given' = 当前AI给出的评价, 'received' = 其他AI给当前AI的评价, 'comment' = 当前AI的完整评论
   
   // 当results变化时,更新选中的模型
   useState(() => {
@@ -427,11 +479,9 @@ function Stage2Display({ results }: { results: Stage2Result[] }) {
   const labelToModel = (() => {
     for (const result of results) {
       if (result.label_to_model && Object.keys(result.label_to_model).length > 0) {
-        console.log('找到 label_to_model 映射:', result.label_to_model);
         return result.label_to_model;
       }
     }
-    console.warn('未找到任何 label_to_model 映射');
     return {};
   })();
   
@@ -494,22 +544,14 @@ function Stage2Display({ results }: { results: Stage2Result[] }) {
     }
     
     if (!currentLabel) {
-      console.log('未找到当前模型的标签:', selectedModel, 'labelToModel:', labelToModel);
       return [];
     }
-    
-    console.log('当前模型标签:', currentLabel, '模型:', selectedModel);
     
     // 收集其他AI对当前AI的打分
     const receivedScores: Array<{ reviewer: string; score: number; comment: string }> = [];
     
     for (const result of results) {
       if (result.model === selectedModel || result.error) continue;
-      
-      // 使用该结果自己的 label_to_model 映射
-      const resultLabelToModel = result.label_to_model || {};
-      
-      console.log(`检查 ${result.model} 的打分:`, result.scores, 'label_to_model:', resultLabelToModel);
       
       const score = result.scores[currentLabel];
       if (score !== undefined) {
@@ -524,7 +566,6 @@ function Stage2Display({ results }: { results: Stage2Result[] }) {
       }
     }
     
-    console.log('收到的评分:', receivedScores);
     return receivedScores;
   };
   
@@ -538,7 +579,6 @@ function Stage2Display({ results }: { results: Stage2Result[] }) {
           // 判断状态：error（红色）、未参与评分（黄色）、成功（绿色）
           const hasError = result.error;
           const notParticipated = !hasError && result.participated === false;
-          // const isSuccess = !hasError && result.participated !== false;
           
           let statusClass = 'success';
           let statusTitle = '执行成功';
@@ -576,7 +616,13 @@ function Stage2Display({ results }: { results: Stage2Result[] }) {
           className={`view-mode-btn ${viewMode === 'given' ? 'active' : ''}`}
           onClick={() => setViewMode('given')}
         >
-          📤 {selectedResult.model} 给出的评价
+          📤 {selectedResult.model} 给出的打分
+        </button>
+        <button
+          className={`view-mode-btn ${viewMode === 'comment' ? 'active' : ''}`}
+          onClick={() => setViewMode('comment')}
+        >
+          💬 {selectedResult.model} 的完整评论
         </button>
         <button
           className={`view-mode-btn ${viewMode === 'received' ? 'active' : ''}`}
@@ -591,7 +637,9 @@ function Stage2Display({ results }: { results: Stage2Result[] }) {
         <div className="scoring-result">
           <div className="scoring-header">
             <span className="model-name">
-              {viewMode === 'given' ? `🎯 ${selectedResult.model} 的评价` : `📊 ${selectedResult.model} 收到的评价`}
+              {viewMode === 'given' ? `🎯 ${selectedResult.model} 给出的打分` :
+               viewMode === 'comment' ? `💬 ${selectedResult.model} 的完整评论` :
+               `📊 ${selectedResult.model} 收到的评价`}
             </span>
             <span className="model-time">
               {new Date(selectedResult.timestamp).toLocaleTimeString('zh-CN')}
@@ -632,8 +680,10 @@ function Stage2Display({ results }: { results: Stage2Result[] }) {
                   })}
                 </div>
               </div>
+            </div>
+          ) : viewMode === 'comment' ? (
+            <div className="scoring-content">
               <div className="raw-text">
-                <strong>完整评论：</strong>
                 <div className="comment-text">
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm, remarkMath]}

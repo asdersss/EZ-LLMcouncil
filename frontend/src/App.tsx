@@ -24,10 +24,24 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   // 统一的弹窗状态管理 - 同一时间只能打开一个弹窗
   const [activeModal, setActiveModal] = useState<ModalType>(null);
+  // 标记文件管理器是否处于选择模式
+  const [isSelectingFile, setIsSelectingFile] = useState(false);
 
   // 初始化：加载对话列表和模型列表
   useEffect(() => {
     initialize();
+
+    // 监听打开文件管理器的事件
+    const handleOpenFileManager = () => {
+      setIsSelectingFile(true);
+      setActiveModal('fileManager');
+    };
+
+    window.addEventListener('openFileManager', handleOpenFileManager);
+
+    return () => {
+      window.removeEventListener('openFileManager', handleOpenFileManager);
+    };
   }, []);
 
   const initialize = async () => {
@@ -143,7 +157,10 @@ function App() {
         onNewConversation={handleNewConversation}
         onDeleteConversation={handleDeleteConversation}
         onOpenSettings={() => setActiveModal('settings')}
-        onOpenFileManager={() => setActiveModal('fileManager')}
+        onOpenFileManager={() => {
+          setIsSelectingFile(false);
+          setActiveModal('fileManager');
+        }}
         onOpenProviderManager={() => setActiveModal('providerManager')}
       />
       
@@ -154,6 +171,10 @@ function App() {
         onUpdateTitle={handleUpdateConversationTitle}
         activeModal={activeModal}
         onSetActiveModal={setActiveModal}
+        onOpenFileManager={() => {
+          setIsSelectingFile(true);
+          setActiveModal('fileManager');
+        }}
       />
       
       {/* 设置弹窗 */}
@@ -163,7 +184,18 @@ function App() {
       
       {/* 全局文件管理器 */}
       {activeModal === 'fileManager' && (
-        <FileManager onClose={() => setActiveModal(null)} />
+        <FileManager
+          onClose={() => setActiveModal(null)}
+          onSelectFile={isSelectingFile ? (file) => {
+            // 这里我们需要一种方式将选中的文件传递给 InputArea
+            // 由于 InputArea 是 ChatInterface 的子组件，我们需要通过状态提升或事件总线来传递
+            // 暂时先关闭弹窗，后续可以通过 Context 或其他方式优化
+            setActiveModal(null);
+            // 触发一个自定义事件，InputArea 可以监听这个事件
+            const event = new CustomEvent('fileSelected', { detail: file });
+            window.dispatchEvent(event);
+          } : undefined}
+        />
       )}
       
       {/* 供应商管理器 */}

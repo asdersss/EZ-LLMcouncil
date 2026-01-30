@@ -18,13 +18,14 @@ interface ChatInterfaceProps {
   onUpdateTitle?: (convId: string, newTitle: string) => void;
   activeModal: ModalType;
   onSetActiveModal: (modal: ModalType) => void;
+  onOpenFileManager: () => void;
 }
 
 /**
  * ChatInterface 组件
  * 主聊天界面，整合所有子组件，处理消息发送和 SSE 事件流
  */
-function ChatInterface({ convId, models, onRefreshModels, onUpdateTitle, activeModal, onSetActiveModal }: ChatInterfaceProps) {
+function ChatInterface({ convId, models, onRefreshModels, onUpdateTitle, activeModal, onSetActiveModal, onOpenFileManager }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -39,6 +40,7 @@ function ChatInterface({ convId, models, onRefreshModels, onUpdateTitle, activeM
   // @ts-ignore - modelStatuses is used in render but TS might not detect it correctly in complex JSX
   console.log(modelStatuses);
   const [currentMeetingId, setCurrentMeetingId] = useState<string | null>(null);
+  const [isFooterVisible, setIsFooterVisible] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const shouldAutoScrollRef = useRef<boolean>(false);
@@ -116,7 +118,10 @@ function ChatInterface({ convId, models, onRefreshModels, onUpdateTitle, activeM
   }, []);
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // 只有当 footer 可见时才自动滚动到底部，或者强制滚动
+    if (isFooterVisible || shouldAutoScrollRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   };
 
   const loadConversation = async () => {
@@ -1868,22 +1873,6 @@ function ChatInterface({ convId, models, onRefreshModels, onUpdateTitle, activeM
     <div className="chat-view">
       <div className="chat-header">
         <h2>🏛️ LLM 委员会</h2>
-        <div className="header-actions">
-          <button
-            className="context-manager-trigger"
-            onClick={() => onSetActiveModal('contextManager')}
-            title="上下文管理"
-          >
-            📚 上下文
-          </button>
-          <button
-            className="model-selector-trigger"
-            onClick={() => onSetActiveModal(activeModal === 'modelSelector' ? null : 'modelSelector')}
-            title="选择模型"
-          >
-            🤖 模型 ({selectedModels.length})
-          </button>
-        </div>
       </div>
 
       {activeModal === 'modelSelector' && (
@@ -1936,16 +1925,29 @@ function ChatInterface({ convId, models, onRefreshModels, onUpdateTitle, activeM
         )}
       </div>
 
-      <div className="chat-footer">
-        {isStreaming && (
-          <button className="stop-btn" onClick={handleStopStreaming}>
-            ⏹ 停止生成
-          </button>
-        )}
-        <InputArea
-          onSendMessage={handleSendMessage}
-          disabled={!convId || isStreaming}
-        />
+      <div className={`chat-footer ${!isFooterVisible ? 'hidden' : ''}`}>
+        <button
+          className="footer-toggle-btn"
+          onClick={() => setIsFooterVisible(!isFooterVisible)}
+          title={isFooterVisible ? "隐藏输入框" : "显示输入框"}
+        >
+          {isFooterVisible ? '▼' : '▲'}
+        </button>
+        <div className="footer-content">
+          {isStreaming && (
+            <button className="stop-btn" onClick={handleStopStreaming}>
+              ⏹ 停止生成
+            </button>
+          )}
+          <InputArea
+            onSendMessage={handleSendMessage}
+            disabled={!convId || isStreaming}
+            onOpenContextManager={() => onSetActiveModal('contextManager')}
+            onOpenModelSelector={() => onSetActiveModal(activeModal === 'modelSelector' ? null : 'modelSelector')}
+            onOpenFileManager={onOpenFileManager}
+            selectedModelCount={selectedModels.length}
+          />
+        </div>
       </div>
     </div>
   );
