@@ -405,6 +405,10 @@ function ChatView({ conversationId }: ChatViewProps) {
         <InputArea
           onSendMessage={handleSendMessage}
           disabled={!conversationId || streaming}
+          onOpenContextManager={() => {}}
+          onOpenModelSelector={() => {}}
+          onOpenFileManager={() => {}}
+          selectedModelCount={selectedModels.length}
         />
       </div>
     </div>
