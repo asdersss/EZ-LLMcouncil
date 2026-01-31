@@ -48,8 +48,8 @@ class ChatRequest(BaseModel):
         """验证模型列表"""
         if not v:
             raise ValueError("至少需要选择 1 个模型")
-        if len(v) > 50:
-            raise ValueError("最多只能选择 50 个模型")
+        if len(v) > 1000:
+            raise ValueError("最多只能选择 1000 个模型")
         return v
 
 
