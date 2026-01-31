@@ -6,6 +6,7 @@ import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import CodeBlock from './CodeBlock';
 import ProgressDisplay from './ProgressDisplay';
+import { exportAsMarkdown, exportAsPNG, exportAsJPG, sanitizeFilename, formatTimestamp } from '../utils/exportUtils';
 import './MessageDisplay.css';
 
 // KaTeX 配置选项
@@ -383,6 +384,8 @@ function UserMessage({
  */
 function Stage1Display({ results }: { results: Stage1Result[] }) {
   const [selectedModel, setSelectedModel] = useState<string>(results[0]?.model || '');
+  const [isExporting, setIsExporting] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
   
   // 当results变化时,更新选中的模型
   useState(() => {
@@ -392,6 +395,67 @@ function Stage1Display({ results }: { results: Stage1Result[] }) {
   });
   
   const selectedResult = results.find(r => r.model === selectedModel) || results[0];
+  
+  // 导出为Markdown
+  const handleExportMarkdown = async () => {
+    try {
+      setIsExporting(true);
+      const modelName = sanitizeFilename(selectedResult.model);
+      const timestamp = formatTimestamp();
+      const filename = `Stage1_${modelName}_${timestamp}`;
+      
+      let content = `# Stage 1: 模型响应\n\n`;
+      content += `**模型**: ${selectedResult.model}\n\n`;
+      content += `**时间**: ${new Date(selectedResult.timestamp).toLocaleString('zh-CN')}\n\n`;
+      
+      if (selectedResult.error) {
+        content += `**状态**: ❌ 执行失败\n\n`;
+        content += `**错误信息**: ${selectedResult.error}\n\n`;
+      } else {
+        content += `**状态**: ✅ 执行成功\n\n`;
+        content += `---\n\n`;
+        content += selectedResult.response;
+      }
+      
+      await exportAsMarkdown(content, filename);
+    } catch (error) {
+      alert('导出失败: ' + (error as Error).message);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+  
+  // 导出为PNG
+  const handleExportPNG = async () => {
+    if (!contentRef.current) return;
+    try {
+      setIsExporting(true);
+      const modelName = sanitizeFilename(selectedResult.model);
+      const timestamp = formatTimestamp();
+      const filename = `Stage1_${modelName}_${timestamp}`;
+      await exportAsPNG(contentRef.current, filename);
+    } catch (error) {
+      alert('导出失败: ' + (error as Error).message);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+  
+  // 导出为JPG
+  const handleExportJPG = async () => {
+    if (!contentRef.current) return;
+    try {
+      setIsExporting(true);
+      const modelName = sanitizeFilename(selectedResult.model);
+      const timestamp = formatTimestamp();
+      const filename = `Stage1_${modelName}_${timestamp}`;
+      await exportAsJPG(contentRef.current, filename);
+    } catch (error) {
+      alert('导出失败: ' + (error as Error).message);
+    } finally {
+      setIsExporting(false);
+    }
+  };
   
   return (
     <div className="stage-content">
@@ -416,7 +480,7 @@ function Stage1Display({ results }: { results: Stage1Result[] }) {
       
       {/* 选中模型的响应内容 */}
       <div className="stage-results">
-        <div className="model-response">
+        <div className="model-response" ref={contentRef}>
           <div className="model-header">
             <span className="model-name">🤖 {selectedResult.model}</span>
             <span className="model-time">
@@ -454,6 +518,34 @@ function Stage1Display({ results }: { results: Stage1Result[] }) {
             </div>
           )}
         </div>
+        
+        {/* 导出按钮 */}
+        <div className="export-buttons">
+          <button
+            className="export-btn"
+            onClick={handleExportMarkdown}
+            disabled={isExporting}
+            title="导出为Markdown文件"
+          >
+            📄 导出MD
+          </button>
+          <button
+            className="export-btn"
+            onClick={handleExportPNG}
+            disabled={isExporting}
+            title="导出为PNG截图"
+          >
+            🖼️ 导出PNG
+          </button>
+          <button
+            className="export-btn"
+            onClick={handleExportJPG}
+            disabled={isExporting}
+            title="导出为JPG截图"
+          >
+            📸 导出JPG
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -465,6 +557,8 @@ function Stage1Display({ results }: { results: Stage1Result[] }) {
 function Stage2Display({ results }: { results: Stage2Result[] }) {
   const [selectedModel, setSelectedModel] = useState<string>(results[0]?.model || '');
   const [viewMode, setViewMode] = useState<'given' | 'received' | 'comment'>('given'); // 'given' = 当前AI给出的评价, 'received' = 其他AI给当前AI的评价, 'comment' = 当前AI的完整评论
+  const [isExporting, setIsExporting] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
   
   // 当results变化时,更新选中的模型
   useState(() => {
@@ -571,6 +665,92 @@ function Stage2Display({ results }: { results: Stage2Result[] }) {
   
   const receivedScores = getReceivedScores();
   
+  // 导出为Markdown
+  const handleExportMarkdown = async () => {
+    try {
+      setIsExporting(true);
+      const modelName = sanitizeFilename(selectedResult.model);
+      const timestamp = formatTimestamp();
+      const filename = `Stage2_${modelName}_${timestamp}`;
+      
+      let content = `# Stage 2: 同行评审\n\n`;
+      content += `**模型**: ${selectedResult.model}\n\n`;
+      content += `**时间**: ${new Date(selectedResult.timestamp).toLocaleString('zh-CN')}\n\n`;
+      
+      if (selectedResult.error) {
+        content += `**状态**: ❌ 执行失败\n\n`;
+        content += `**错误信息**: ${selectedResult.error}\n\n`;
+      } else if (selectedResult.participated === false) {
+        content += `**状态**: ⚠️ 未参与评分\n\n`;
+        content += `**原因**: ${selectedResult.skip_reason || '未知原因'}\n\n`;
+      } else {
+        content += `**状态**: ✅ 执行成功\n\n`;
+        content += `---\n\n`;
+        
+        if (viewMode === 'given') {
+          content += `## ${selectedResult.model} 给出的打分\n\n`;
+          Object.entries(selectedResult.scores).forEach(([label, score]) => {
+            const modelName = labelToModel[label] || `未知模型 ${label}`;
+            content += `- **${modelName}** (${label}): ${score.toFixed(1)} / 10\n`;
+          });
+        } else if (viewMode === 'comment') {
+          content += `## ${selectedResult.model} 的完整评论\n\n`;
+          content += selectedResult.raw_text;
+        } else {
+          content += `## 其他 AI 对 ${selectedResult.model} 的评价\n\n`;
+          if (receivedScores.length > 0) {
+            receivedScores.forEach((item) => {
+              content += `### ${item.reviewer}\n\n`;
+              content += `**评分**: ${item.score.toFixed(1)} / 10\n\n`;
+              content += `**评论**: ${item.comment}\n\n`;
+              content += `---\n\n`;
+            });
+          } else {
+            content += `暂无其他 AI 对该模型的评价\n\n`;
+          }
+        }
+      }
+      
+      await exportAsMarkdown(content, filename);
+    } catch (error) {
+      alert('导出失败: ' + (error as Error).message);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+  
+  // 导出为PNG
+  const handleExportPNG = async () => {
+    if (!contentRef.current) return;
+    try {
+      setIsExporting(true);
+      const modelName = sanitizeFilename(selectedResult.model);
+      const timestamp = formatTimestamp();
+      const filename = `Stage2_${modelName}_${timestamp}`;
+      await exportAsPNG(contentRef.current, filename);
+    } catch (error) {
+      alert('导出失败: ' + (error as Error).message);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+  
+  // 导出为JPG
+  const handleExportJPG = async () => {
+    if (!contentRef.current) return;
+    try {
+      setIsExporting(true);
+      const modelName = sanitizeFilename(selectedResult.model);
+      const timestamp = formatTimestamp();
+      const filename = `Stage2_${modelName}_${timestamp}`;
+      await exportAsJPG(contentRef.current, filename);
+    } catch (error) {
+      alert('导出失败: ' + (error as Error).message);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+  
   return (
     <div className="stage-content">
       {/* 模型选择器 */}
@@ -634,7 +814,7 @@ function Stage2Display({ results }: { results: Stage2Result[] }) {
       
       {/* 选中模型的打分内容 */}
       <div className="stage-results">
-        <div className="scoring-result">
+        <div className="scoring-result" ref={contentRef}>
           <div className="scoring-header">
             <span className="model-name">
               {viewMode === 'given' ? `🎯 ${selectedResult.model} 给出的打分` :
@@ -730,6 +910,34 @@ function Stage2Display({ results }: { results: Stage2Result[] }) {
             </div>
           )}
         </div>
+        
+        {/* 导出按钮 */}
+        <div className="export-buttons">
+          <button
+            className="export-btn"
+            onClick={handleExportMarkdown}
+            disabled={isExporting}
+            title="导出为Markdown文件"
+          >
+            📄 导出MD
+          </button>
+          <button
+            className="export-btn"
+            onClick={handleExportPNG}
+            disabled={isExporting}
+            title="导出为PNG截图"
+          >
+            🖼️ 导出PNG
+          </button>
+          <button
+            className="export-btn"
+            onClick={handleExportJPG}
+            disabled={isExporting}
+            title="导出为JPG截图"
+          >
+            📸 导出JPG
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -739,9 +947,69 @@ function Stage2Display({ results }: { results: Stage2Result[] }) {
  * Stage 3 结果展示组件
  */
 function Stage3Display({ result }: { result: Stage3Result }) {
+  const [isExporting, setIsExporting] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+  
+  // 导出为Markdown
+  const handleExportMarkdown = async () => {
+    try {
+      setIsExporting(true);
+      const timestamp = formatTimestamp();
+      const filename = `Stage3_综合答案_${timestamp}`;
+      
+      let content = `# Stage 3: 主席综合答案\n\n`;
+      content += `**时间**: ${new Date(result.timestamp).toLocaleString('zh-CN')}\n\n`;
+      
+      if (result.error) {
+        content += `**状态**: ❌ 执行失败\n\n`;
+        content += `**错误信息**: ${result.error}\n\n`;
+      } else {
+        content += `**状态**: ✅ 执行成功\n\n`;
+        content += `---\n\n`;
+        content += result.response;
+      }
+      
+      await exportAsMarkdown(content, filename);
+    } catch (error) {
+      alert('导出失败: ' + (error as Error).message);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+  
+  // 导出为PNG
+  const handleExportPNG = async () => {
+    if (!contentRef.current) return;
+    try {
+      setIsExporting(true);
+      const timestamp = formatTimestamp();
+      const filename = `Stage3_综合答案_${timestamp}`;
+      await exportAsPNG(contentRef.current, filename);
+    } catch (error) {
+      alert('导出失败: ' + (error as Error).message);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+  
+  // 导出为JPG
+  const handleExportJPG = async () => {
+    if (!contentRef.current) return;
+    try {
+      setIsExporting(true);
+      const timestamp = formatTimestamp();
+      const filename = `Stage3_综合答案_${timestamp}`;
+      await exportAsJPG(contentRef.current, filename);
+    } catch (error) {
+      alert('导出失败: ' + (error as Error).message);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+  
   return (
     <div className="stage-content">
-      <div className="final-answer">
+      <div className="final-answer" ref={contentRef}>
         <div className="final-header">
           <span className="final-icon">✨ 主席综合答案</span>
           <span className="final-time">
@@ -776,6 +1044,34 @@ function Stage3Display({ result }: { result: Stage3Result }) {
           </div>
         )}
       </div>
+      
+      {/* 导出按钮 */}
+      <div className="export-buttons">
+        <button
+          className="export-btn"
+          onClick={handleExportMarkdown}
+          disabled={isExporting}
+          title="导出为Markdown文件"
+        >
+          📄 导出MD
+        </button>
+        <button
+          className="export-btn"
+          onClick={handleExportPNG}
+          disabled={isExporting}
+          title="导出为PNG截图"
+        >
+          🖼️ 导出PNG
+        </button>
+        <button
+          className="export-btn"
+          onClick={handleExportJPG}
+          disabled={isExporting}
+          title="导出为JPG截图"
+        >
+          📸 导出JPG
+        </button>
+      </div>
     </div>
   );
 }
@@ -786,6 +1082,9 @@ function Stage3Display({ result }: { result: Stage3Result }) {
 function Stage4Display({ result, stage1Results }: { result: Stage4Result; stage1Results?: Stage1Result[] }) {
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [showAllRankings, setShowAllRankings] = useState<boolean>(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const rankingsRef = useRef<HTMLDivElement>(null);
+  const answerRef = useRef<HTMLDivElement>(null);
   
   // 获取选中模型的详细答案
   const selectedAnswer = selectedModel && stage1Results
@@ -799,6 +1098,131 @@ function Stage4Display({ result, stage1Results }: { result: Stage4Result; stage1
     ? result.rankings.slice(0, 10)
     : result.rankings;
   
+  // 导出排名列表为Markdown
+  const handleExportRankingsMarkdown = async () => {
+    try {
+      setIsExporting(true);
+      const timestamp = formatTimestamp();
+      const filename = `Stage4_排名列表_${timestamp}`;
+      
+      let content = `# Stage 4: 最终排名\n\n`;
+      content += `**时间**: ${new Date(result.timestamp).toLocaleString('zh-CN')}\n\n`;
+      content += `**总参与模型数**: ${result.rankings.length}\n\n`;
+      
+      if (result.valid_scorer_count !== undefined) {
+        content += `**有效评分者数量**: ${result.valid_scorer_count}\n\n`;
+      }
+      
+      content += `---\n\n`;
+      content += `## 排名详情\n\n`;
+      
+      result.rankings.forEach((ranking, index) => {
+        const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`;
+        content += `### ${medal} ${ranking.model}\n\n`;
+        content += `- **平均分**: ${ranking.avg_score.toFixed(2)} / 10\n`;
+        content += `- **收到评分数**: ${ranking.score_count} 个\n`;
+        content += `- **评分者状态**: ${ranking.scorer_valid ? '✓ 有效' : `⚠️ 无效 (${ranking.scorer_reason || '未知原因'})`}\n\n`;
+      });
+      
+      await exportAsMarkdown(content, filename);
+    } catch (error) {
+      alert('导出失败: ' + (error as Error).message);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+  
+  // 导出排名列表为PNG
+  const handleExportRankingsPNG = async () => {
+    if (!rankingsRef.current) return;
+    try {
+      setIsExporting(true);
+      const timestamp = formatTimestamp();
+      const filename = `Stage4_排名列表_${timestamp}`;
+      await exportAsPNG(rankingsRef.current, filename);
+    } catch (error) {
+      alert('导出失败: ' + (error as Error).message);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+  
+  // 导出排名列表为JPG
+  const handleExportRankingsJPG = async () => {
+    if (!rankingsRef.current) return;
+    try {
+      setIsExporting(true);
+      const timestamp = formatTimestamp();
+      const filename = `Stage4_排名列表_${timestamp}`;
+      await exportAsJPG(rankingsRef.current, filename);
+    } catch (error) {
+      alert('导出失败: ' + (error as Error).message);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+  
+  // 导出完整答案为Markdown
+  const handleExportAnswerMarkdown = async () => {
+    if (!selectedAnswer) return;
+    try {
+      setIsExporting(true);
+      const modelName = sanitizeFilename(selectedAnswer.model);
+      const timestamp = formatTimestamp();
+      const filename = `Stage4_完整答案_${modelName}_${timestamp}`;
+      
+      let content = `# ${selectedAnswer.model} 的完整答案\n\n`;
+      content += `**时间**: ${new Date(selectedAnswer.timestamp).toLocaleString('zh-CN')}\n\n`;
+      
+      if (selectedAnswer.error) {
+        content += `**状态**: ❌ 执行失败\n\n`;
+        content += `**错误信息**: ${selectedAnswer.error}\n\n`;
+      } else {
+        content += `**状态**: ✅ 执行成功\n\n`;
+        content += `---\n\n`;
+        content += selectedAnswer.response;
+      }
+      
+      await exportAsMarkdown(content, filename);
+    } catch (error) {
+      alert('导出失败: ' + (error as Error).message);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+  
+  // 导出完整答案为PNG
+  const handleExportAnswerPNG = async () => {
+    if (!answerRef.current) return;
+    try {
+      setIsExporting(true);
+      const modelName = sanitizeFilename(selectedAnswer!.model);
+      const timestamp = formatTimestamp();
+      const filename = `Stage4_完整答案_${modelName}_${timestamp}`;
+      await exportAsPNG(answerRef.current, filename);
+    } catch (error) {
+      alert('导出失败: ' + (error as Error).message);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+  
+  // 导出完整答案为JPG
+  const handleExportAnswerJPG = async () => {
+    if (!answerRef.current) return;
+    try {
+      setIsExporting(true);
+      const modelName = sanitizeFilename(selectedAnswer!.model);
+      const timestamp = formatTimestamp();
+      const filename = `Stage4_完整答案_${modelName}_${timestamp}`;
+      await exportAsJPG(answerRef.current, filename);
+    } catch (error) {
+      alert('导出失败: ' + (error as Error).message);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+  
   return (
     <div className="stage-content">
       <div className="stage4-container">
@@ -810,7 +1234,7 @@ function Stage4Display({ result, stage1Results }: { result: Stage4Result; stage1
         ) : (
           <>
             {/* 排名列表 */}
-            <div className="rankings-section">
+            <div className="rankings-section" ref={rankingsRef}>
               <div className="rankings-header">
                 <span className="rankings-icon">🏆 最终排名</span>
                 <span className="rankings-time">
@@ -885,11 +1309,39 @@ function Stage4Display({ result, stage1Results }: { result: Stage4Result; stage1
                   </button>
                 </div>
               )}
+              
+              {/* 排名列表导出按钮 */}
+              <div className="export-buttons">
+                <button
+                  className="export-btn"
+                  onClick={handleExportRankingsMarkdown}
+                  disabled={isExporting}
+                  title="导出排名列表为Markdown文件"
+                >
+                  📄 导出MD
+                </button>
+                <button
+                  className="export-btn"
+                  onClick={handleExportRankingsPNG}
+                  disabled={isExporting}
+                  title="导出排名列表为PNG截图"
+                >
+                  🖼️ 导出PNG
+                </button>
+                <button
+                  className="export-btn"
+                  onClick={handleExportRankingsJPG}
+                  disabled={isExporting}
+                  title="导出排名列表为JPG截图"
+                >
+                  📸 导出JPG
+                </button>
+              </div>
             </div>
             
             {/* 选中答案的详细内容 */}
             {selectedAnswer && (
-              <div className="selected-answer-section">
+              <div className="selected-answer-section" ref={answerRef}>
                 <div className="selected-answer-header">
                   <span className="selected-answer-icon">📄 {selectedAnswer.model} 的完整答案</span>
                   <button
@@ -921,6 +1373,34 @@ function Stage4Display({ result, stage1Results }: { result: Stage4Result; stage1
                   >
                     {selectedAnswer.response}
                   </ReactMarkdown>
+                </div>
+                
+                {/* 完整答案导出按钮 */}
+                <div className="export-buttons">
+                  <button
+                    className="export-btn"
+                    onClick={handleExportAnswerMarkdown}
+                    disabled={isExporting}
+                    title="导出完整答案为Markdown文件"
+                  >
+                    📄 导出MD
+                  </button>
+                  <button
+                    className="export-btn"
+                    onClick={handleExportAnswerPNG}
+                    disabled={isExporting}
+                    title="导出完整答案为PNG截图"
+                  >
+                    🖼️ 导出PNG
+                  </button>
+                  <button
+                    className="export-btn"
+                    onClick={handleExportAnswerJPG}
+                    disabled={isExporting}
+                    title="导出完整答案为JPG截图"
+                  >
+                    📸 导出JPG
+                  </button>
                 </div>
               </div>
             )}

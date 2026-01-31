@@ -1,4 +1,9 @@
 #!/bin/bash
 echo "Starting LLM Council Frontend..."
 cd frontend
+
+echo "Checking dependencies..."
+npm install --silent
+
+echo "Starting development server..."
 npm run dev
