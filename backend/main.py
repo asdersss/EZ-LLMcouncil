@@ -102,6 +102,94 @@ else:
     logger.warning(f"前端构建目录不存在: {frontend_dist}")
 
 
+def ensure_config_files():
+    """确保配置文件存在，如果不存在则创建"""
+    try:
+        # 定义配置文件路径
+        config_files = {
+            "config.json": {
+                "chairman": "",
+                "providers": [],
+                "settings": {
+                    "temperature": 0.7,
+                    "timeout": 120,
+                    "max_retries": 3,
+                    "max_concurrent": 10,
+                    "use_mineru": False,
+                    "mineru_api_url": "",
+                    "mineru_api_key": ""
+                }
+            },
+            "providers.json": {
+                "providers": []
+            }
+        }
+        
+        # 检查并创建配置文件
+        for filename, default_content in config_files.items():
+            # 尝试多个可能的路径
+            possible_paths = [
+                filename,  # 当前目录
+                f"backend/{filename}",  # backend目录
+            ]
+            
+            file_exists = False
+            for path in possible_paths:
+                if os.path.exists(path):
+                    file_exists = True
+                    logger.info(f"配置文件已存在: {path}")
+                    break
+            
+            if not file_exists:
+                # 创建配置文件
+                target_path = filename
+                try:
+                    with open(target_path, "w", encoding="utf-8") as f:
+                        json.dump(default_content, f, ensure_ascii=False, indent=2)
+                    logger.info(f"已创建配置文件: {target_path}")
+                except Exception as e:
+                    logger.warning(f"无法在当前目录创建 {filename}: {e}")
+        
+        # 确保必要的目录存在
+        directories = [
+            "backend",
+            "backend/uploads",
+            "data",
+            "data/conversations"
+        ]
+        
+        for directory in directories:
+            if not os.path.exists(directory):
+                try:
+                    os.makedirs(directory, exist_ok=True)
+                    logger.info(f"已创建目录: {directory}")
+                except Exception as e:
+                    logger.warning(f"无法创建目录 {directory}: {e}")
+        
+        # 确保文件元数据文件存在
+        metadata_paths = [
+            "backend/file_metadata.json",
+            "backend/backend/file_metadata.json"
+        ]
+        
+        metadata_exists = any(os.path.exists(p) for p in metadata_paths)
+        if not metadata_exists:
+            default_metadata = {"files": []}
+            for path in metadata_paths:
+                try:
+                    # 确保父目录存在
+                    os.makedirs(os.path.dirname(path), exist_ok=True)
+                    with open(path, "w", encoding="utf-8") as f:
+                        json.dump(default_metadata, f, ensure_ascii=False, indent=2)
+                    logger.info(f"已创建文件元数据: {path}")
+                    break
+                except Exception as e:
+                    logger.warning(f"无法创建 {path}: {e}")
+                    
+    except Exception as e:
+        logger.error(f"初始化配置文件失败: {e}", exc_info=True)
+
+
 def load_config() -> Dict[str, Any]:
     """加载配置文件"""
     try:
@@ -121,10 +209,10 @@ def load_config() -> Dict[str, Any]:
                 continue
         
         logger.error("未找到配置文件")
-        return {"models": [], "chairman": "", "settings": {}}
+        return {"models": [], "chairman": "", "settings": {}, "providers": []}
     except Exception as e:
         logger.error(f"加载配置文件失败: {e}")
-        return {"models": [], "chairman": "", "settings": {}}
+        return {"models": [], "chairman": "", "settings": {}, "providers": []}
 
 
 def format_sse(event: str, data: dict) -> str:
@@ -2134,6 +2222,10 @@ async def api_root():
 
 if __name__ == "__main__":
     import uvicorn
+    
+    # 初始化配置文件
+    logger.info("检查并初始化配置文件...")
+    ensure_config_files()
     
     # 打印友好的启动提示
     print("\n" + "="*60)
