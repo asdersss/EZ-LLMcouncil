@@ -11,7 +11,15 @@ mermaid.initialize({
   flowchart: {
     useMaxWidth: true,
     htmlLabels: true,
-    curve: 'basis'
+    curve: 'basis',
+    padding: 20,
+    nodeSpacing: 50,
+    rankSpacing: 50,
+    diagramPadding: 8,
+    wrappingWidth: 200
+  },
+  themeVariables: {
+    fontSize: '16px'
   }
 });
 
